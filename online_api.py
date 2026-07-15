@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from excel_handler import SourceMetadataReader
 from matcher import Matcher
 from workbook_handler import WorkbookHandler
+from ai_assistant import NoMapAIAssistant
 
 
 class MetadataItem(BaseModel):
@@ -72,12 +73,29 @@ def health():
 
 def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dict:
     matcher = Matcher()
+    nomap_ai = NoMapAIAssistant(top_n=3)
     decisions: list[dict] = []
 
     for target in target_metadata:
         result = matcher.match_target(target, source_metadata)
 
         if result is None:
+
+            suggestions = nomap_ai.suggest_for_nomap(
+                target,
+                source_metadata
+            )
+
+            top = suggestions[0] if suggestions else None
+
+            alternatives = ""
+
+            if suggestions:
+                alternatives = " | ".join([
+                    f"{x['source_field']} ({x['confidence']})"
+                    for x in suggestions
+                ])
+
             decisions.append(
                 {
                     "target_field": target["field"],
@@ -88,6 +106,11 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
                     "method": "No Match",
                     "status": "NoMap",
                     "reason": "No candidate above threshold",
+                    "ai_suggested_source": top["source_field"] if top else "",
+                    "ai_confidence": top["confidence"] if top else "",
+                    "ai_method": top["method"] if top else "",
+                    "ai_reason": top["reason"] if top else "",
+                    "ai_alternatives": alternatives,
                 }
             )
             continue
@@ -102,6 +125,11 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
                 "method": result["method"],
                 "status": result["status"],
                 "reason": result["reason"],
+                "ai_suggested_source": "",
+                "ai_confidence": "",
+                "ai_method": "",
+                "ai_reason": "",
+                "ai_alternatives": "",
             }
         )
 

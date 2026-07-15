@@ -47,7 +47,22 @@ class AuditLogger:
                 result.get("status", ""),
 
             "Reason":
-                result.get("reason", "")
+                result.get("reason", ""),
+
+            "AI Suggested Source":
+                result.get("ai_suggested_source", ""),
+
+            "AI Confidence":
+                result.get("ai_confidence", ""),
+
+            "AI Method":
+                result.get("ai_method", ""),
+
+            "AI Reason":
+                result.get("ai_reason", ""),
+
+            "AI Alternatives":
+                result.get("ai_alternatives", "")
 
         })
 

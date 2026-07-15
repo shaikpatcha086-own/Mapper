@@ -5,6 +5,7 @@ from excel_handler import SourceMetadataReader
 from workbook_handler import WorkbookHandler
 from matcher import Matcher
 from audit_logger import AuditLogger
+from ai_assistant import NoMapAIAssistant
 
 # ---------------------------------------------------------
 # Page Configuration
@@ -76,8 +77,10 @@ if source_file and target_file:
                 target_metadata = workbook.get_target_fields()
 
                 matcher = Matcher()
+                nomap_ai = NoMapAIAssistant(top_n=3)
 
                 logger = AuditLogger()
+                nomap_assistance = []
 
                 mapped = 0
                 review = 0
@@ -101,6 +104,30 @@ if source_file and target_file:
                             "NoMap"
                         )
 
+                        suggestions = nomap_ai.suggest_for_nomap(
+                            target,
+                            source_metadata
+                        )
+
+                        top = suggestions[0] if suggestions else None
+
+                        alternatives = ""
+
+                        if suggestions:
+                            alternatives = " | ".join([
+                                f"{x['source_field']} ({x['confidence']})"
+                                for x in suggestions
+                            ])
+
+                        if top:
+                            nomap_assistance.append({
+                                "Target Field": target["field"],
+                                "Suggested Source": top["source_field"],
+                                "Confidence": top["confidence"],
+                                "Method": top["method"],
+                                "Reason": top["reason"]
+                            })
+
                         logger.add({
                             "source_field": "NoMap",
                             "source_description": "",
@@ -111,7 +138,12 @@ if source_file and target_file:
                             "confidence": 0,
                             "method": "No Match",
                             "status": "NoMap",
-                            "reason": "No candidate above threshold"
+                            "reason": "No candidate above threshold",
+                            "ai_suggested_source": top["source_field"] if top else "",
+                            "ai_confidence": top["confidence"] if top else "",
+                            "ai_method": top["method"] if top else "",
+                            "ai_reason": top["reason"] if top else "",
+                            "ai_alternatives": alternatives
                         })
 
                         nomap += 1
@@ -174,6 +206,15 @@ if source_file and target_file:
                 logger.dataframe(),
                 use_container_width=True
             )
+
+            if nomap_assistance:
+
+                st.subheader("🤖 AI Assistance For NoMap")
+
+                st.dataframe(
+                    nomap_assistance,
+                    use_container_width=True
+                )
 
             # -------------------------------------------------
             # Download Buttons
