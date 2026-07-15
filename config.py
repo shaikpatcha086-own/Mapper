@@ -1,0 +1,116 @@
+"""
+===========================================================
+D365 Finance & Operations Metadata Mapper
+Version : 3.0
+Configuration
+===========================================================
+"""
+
+# ---------------------------------------------------------
+# Application
+# ---------------------------------------------------------
+
+APP_NAME = "D365 Finance & Operations Metadata Mapper"
+APP_VERSION = "3.0.0"
+
+# ---------------------------------------------------------
+# Matching Thresholds
+# ---------------------------------------------------------
+
+EXACT_MATCH_SCORE = 100
+NORMALIZED_MATCH_SCORE = 99
+BUSINESS_MATCH_SCORE = 97
+CAMELCASE_MATCH_SCORE = 96
+TOKEN_MATCH_SCORE = 94
+SOURCE_DESCRIPTION_SCORE = 92
+TARGET_DESCRIPTION_SCORE = 90
+ABBREVIATION_MATCH_SCORE = 88
+
+FUZZY_MATCH_THRESHOLD = 85
+REVIEW_THRESHOLD = 90
+AUTO_ACCEPT_THRESHOLD = 95
+
+# ---------------------------------------------------------
+# Supported Source Header Names
+# (Dynamic Detection)
+# ---------------------------------------------------------
+
+SOURCE_FIELD_HEADERS = [
+
+    "field",
+    "source field",
+    "column",
+    "column name",
+    "attribute",
+    "attribute name",
+    "name"
+
+]
+
+SOURCE_DESCRIPTION_HEADERS = [
+
+    "description",
+    "comments",
+    "comment",
+    "definition",
+    "field description",
+    "business description",
+    "long description",
+    "notes",
+    "remark",
+    "remarks",
+    "explanation"
+
+]
+
+# ---------------------------------------------------------
+# Supported Target Header Names
+# ---------------------------------------------------------
+
+TARGET_FIELD_HEADERS = [
+
+    "field"
+
+]
+
+TARGET_DESCRIPTION_HEADERS = [
+
+    "field description",
+    "description",
+    "comments",
+    "label"
+
+]
+
+TARGET_SOURCEFIELD_HEADERS = [
+
+    "source_field",
+    "source field"
+
+]
+
+# ---------------------------------------------------------
+# Normalization
+# ---------------------------------------------------------
+
+REMOVE_CHARACTERS = [
+
+    "_",
+    "-",
+    ".",
+    "/",
+    "\\",
+    "(",
+    ")",
+    "[",
+    "]"
+
+]
+
+# ---------------------------------------------------------
+# Logging
+# ---------------------------------------------------------
+
+ENABLE_LOGGING = True
+
+LOG_FOLDER = "logs"
