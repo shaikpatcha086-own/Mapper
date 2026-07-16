@@ -81,7 +81,7 @@ if source_file and target_file:
                 nomap_ai = NoMapAIAssistant(top_n=3)
 
                 logger = AuditLogger()
-                unmapped_source_assistance = []
+                nomap_assistance = []
 
                 mapped = 0
                 review = 0
@@ -157,7 +157,7 @@ if source_file and target_file:
                 workbook.save(output)
 
                 # -------------------------------------------------
-                # Source-Centric Leftover Review
+                # AI Assistance For NoMap
                 # -------------------------------------------------
 
                 used_sources = set(matcher.used_source_fields)
@@ -184,13 +184,13 @@ if source_file and target_file:
                             for x in suggestions
                         ])
 
-                    unmapped_source_assistance.append({
-                        "Source Field": source.get("field", ""),
+                    nomap_assistance.append({
+                        "Suggested Source": source.get("field", ""),
                         "Source Description": source.get("description", ""),
-                        "Suggested Target": top["target_field"] if top else "",
-                        "Confidence": top["confidence"] if top else "",
+                        "Target Suggestion": top["target_field"] if top else "",
+                        "Confidence": top["confidence"] if top else 0,
                         "Method": top["method"] if top else "",
-                        "Reason": top["reason"] if top else "",
+                        "Reason": top["reason"] if top else "No suggestion from AI",
                         "Alternatives": alternatives
                     })
 
@@ -208,9 +208,9 @@ if source_file and target_file:
                         index=False
                     )
 
-                    pd.DataFrame(unmapped_source_assistance).to_excel(
+                    pd.DataFrame(nomap_assistance).to_excel(
                         writer,
-                        sheet_name="Unmapped Source AI Review",
+                        sheet_name="AI Assistance For NoMap",
                         index=False
                     )
 
@@ -240,10 +240,10 @@ if source_file and target_file:
                 use_container_width=True
             )
 
-            st.subheader("🧩 Unmapped Source AI Review")
+            st.subheader("🤖 AI Assistance For NoMap")
 
             st.dataframe(
-                pd.DataFrame(unmapped_source_assistance),
+                pd.DataFrame(nomap_assistance),
                 use_container_width=True
             )
 
