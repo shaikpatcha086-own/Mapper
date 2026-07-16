@@ -32,7 +32,16 @@ NEGATIVE_RULES = [
     ("amount", "quantity"),
 
     ("currency", "language"),
-    ("language", "currency")
+    ("language", "currency"),
+
+    ("email", "employee"),
+    ("employee", "email"),
+
+    ("city", "company"),
+    ("company", "city"),
+
+    ("city", "chain"),
+    ("chain", "city")
 
 ]
 

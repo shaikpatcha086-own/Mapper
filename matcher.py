@@ -8,6 +8,14 @@ D365 Metadata Mapper V3
 from scorer import Scorer
 from rules import violates_business_rule
 from ranking import RankingEngine
+from normalizer import fingerprint_tokens
+from config import (
+    MIN_CONFIDENCE_SCORE,
+    HEURISTIC_MIN_CONFIDENCE,
+    DETERMINISTIC_METHODS,
+    HEURISTIC_METHODS,
+    GENERIC_MATCH_TOKENS
+)
 
 
 class Matcher:
@@ -19,6 +27,16 @@ class Matcher:
         self.ranking = RankingEngine()
 
         self.used_source_fields = set()
+
+    def _has_domain_overlap(self, source_field, target_field):
+
+        source_tokens = set(fingerprint_tokens(source_field))
+        target_tokens = set(fingerprint_tokens(target_field))
+
+        source_tokens -= GENERIC_MATCH_TOKENS
+        target_tokens -= GENERIC_MATCH_TOKENS
+
+        return len(source_tokens.intersection(target_tokens)) > 0
 
     # -----------------------------------------------------
     # Match One Target
@@ -62,8 +80,19 @@ class Matcher:
             )
 
             # Ignore NoMap candidates
-            if result["confidence"] < 85:
+            if result["confidence"] < MIN_CONFIDENCE_SCORE:
                 continue
+
+            if result["method"] in HEURISTIC_METHODS:
+
+                if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
+                    continue
+
+                if not self._has_domain_overlap(
+                    source["field"],
+                    target["field"]
+                ):
+                    continue
 
             candidates.append({
 
@@ -120,6 +149,19 @@ class Matcher:
                 best["reason"] = (
                     "Multiple high-confidence candidates"
                 )
+
+        if best["method"] in HEURISTIC_METHODS:
+
+            best["status"] = "Review"
+
+            if best["reason"] != "Multiple high-confidence candidates":
+                best["reason"] = (
+                    "Heuristic method requires manual review"
+                )
+
+        elif best["method"] not in DETERMINISTIC_METHODS:
+
+            best["status"] = "Review"
 
         self.used_source_fields.add(
             best["source_field"]

@@ -31,6 +31,46 @@ REVIEW_THRESHOLD = 90
 AUTO_ACCEPT_THRESHOLD = 95
 
 # ---------------------------------------------------------
+# Matching Policy
+# ---------------------------------------------------------
+
+MIN_CONFIDENCE_SCORE = 85
+HEURISTIC_MIN_CONFIDENCE = 92
+
+DETERMINISTIC_METHODS = {
+    "Exact",
+    "Normalized",
+    "Enterprise Alias",
+    "D365 Dictionary",
+    "Business Fingerprint"
+}
+
+HEURISTIC_METHODS = {
+    "Semantic",
+    "Fuzzy",
+    "Token",
+    "Business Token",
+    "Business Dictionary",
+    "Description",
+    "Source Description",
+    "Abbreviation",
+    "Contains"
+}
+
+GENERIC_MATCH_TOKENS = {
+    "id",
+    "code",
+    "number",
+    "name",
+    "type",
+    "value",
+    "data",
+    "record",
+    "field",
+    "key"
+}
+
+# ---------------------------------------------------------
 # Supported Source Header Names
 # (Dynamic Detection)
 # ---------------------------------------------------------

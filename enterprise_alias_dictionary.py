@@ -439,23 +439,6 @@ def is_alias_match(source_field, target_field):
 
     ]
 
-    print("SOURCE :", source)
-    print("TARGET :", target)
-    print("ALIASES:", aliases)
-
-    return target in aliases
-    """
-    Returns True if target field is a known enterprise alias.
-    """
-
-    source = normalize(source_field)
-    target = normalize(target_field)
-
-    aliases = [
-        normalize(x)
-        for x in get_aliases(source)
-    ]
-
     return target in aliases
 
 

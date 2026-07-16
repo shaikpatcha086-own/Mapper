@@ -71,8 +71,6 @@ class Scorer:
 
         if is_alias_match(source_field, target_field):
 
-            print(f"ALIAS MATCH FOUND: {source_field} -> {target_field}")
-
             return self._result(
                 100,
                 "Enterprise Alias",
