@@ -81,7 +81,6 @@ if source_file and target_file:
                 nomap_ai = NoMapAIAssistant(top_n=3)
 
                 logger = AuditLogger()
-                nomap_assistance = []
                 unmapped_source_assistance = []
 
                 mapped = 0
@@ -106,31 +105,6 @@ if source_file and target_file:
                             "NoMap"
                         )
 
-                        suggestions = nomap_ai.suggest_for_nomap(
-                            target,
-                            source_metadata,
-                            exclude_sources=matcher.used_source_fields
-                        )
-
-                        top = suggestions[0] if suggestions else None
-
-                        alternatives = ""
-
-                        if suggestions:
-                            alternatives = " | ".join([
-                                f"{x['source_field']} ({x['confidence']})"
-                                for x in suggestions
-                            ])
-
-                        if top:
-                            nomap_assistance.append({
-                                "Target Field": target["field"],
-                                "Suggested Source": top["source_field"],
-                                "Confidence": top["confidence"],
-                                "Method": top["method"],
-                                "Reason": top["reason"]
-                            })
-
                         logger.add({
                             "source_field": "NoMap",
                             "source_description": "",
@@ -142,11 +116,11 @@ if source_file and target_file:
                             "method": "No Match",
                             "status": "NoMap",
                             "reason": "No candidate above threshold",
-                            "ai_suggested_source": top["source_field"] if top else "",
-                            "ai_confidence": top["confidence"] if top else "",
-                            "ai_method": top["method"] if top else "",
-                            "ai_reason": top["reason"] if top else "",
-                            "ai_alternatives": alternatives
+                            "ai_suggested_source": "",
+                            "ai_confidence": "",
+                            "ai_method": "",
+                            "ai_reason": "",
+                            "ai_alternatives": ""
                         })
 
                         nomap += 1
@@ -157,56 +131,13 @@ if source_file and target_file:
                         result["source_field"]
                     )
 
-                    review_suggestions = []
-                    review_top = None
-                    review_alternatives = ""
-
-                    if result.get("status") == "Review":
-
-                        excluded = set(matcher.used_source_fields)
-                        excluded.discard(result.get("source_field", ""))
-
-                        review_suggestions = nomap_ai.suggest_for_nomap(
-                            target,
-                            source_metadata,
-                            exclude_sources=excluded
-                        )
-
-                        review_top = (
-                            review_suggestions[0]
-                            if review_suggestions
-                            else None
-                        )
-
-                        if review_suggestions:
-                            review_alternatives = " | ".join([
-                                f"{x['source_field']} ({x['confidence']})"
-                                for x in review_suggestions
-                            ])
-
                     logger.add({
                         **result,
-                        "ai_suggested_source": (
-                            review_top["source_field"]
-                            if review_top
-                            else ""
-                        ),
-                        "ai_confidence": (
-                            review_top["confidence"]
-                            if review_top
-                            else ""
-                        ),
-                        "ai_method": (
-                            review_top["method"]
-                            if review_top
-                            else ""
-                        ),
-                        "ai_reason": (
-                            review_top["reason"]
-                            if review_top
-                            else ""
-                        ),
-                        "ai_alternatives": review_alternatives
+                        "ai_suggested_source": "",
+                        "ai_confidence": "",
+                        "ai_method": "",
+                        "ai_reason": "",
+                        "ai_alternatives": ""
                     })
 
                     if result["status"] == "Auto Accept":
@@ -308,15 +239,6 @@ if source_file and target_file:
                 logger.dataframe(),
                 use_container_width=True
             )
-
-            if nomap_assistance:
-
-                st.subheader("🤖 AI Assistance For NoMap")
-
-                st.dataframe(
-                    nomap_assistance,
-                    use_container_width=True
-                )
 
             st.subheader("🧩 Unmapped Source AI Review")
 

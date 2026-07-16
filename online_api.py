@@ -80,23 +80,6 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
         result = matcher.match_target(target, source_metadata)
 
         if result is None:
-
-            suggestions = nomap_ai.suggest_for_nomap(
-                target,
-                source_metadata,
-                exclude_sources=matcher.used_source_fields
-            )
-
-            top = suggestions[0] if suggestions else None
-
-            alternatives = ""
-
-            if suggestions:
-                alternatives = " | ".join([
-                    f"{x['source_field']} ({x['confidence']})"
-                    for x in suggestions
-                ])
-
             decisions.append(
                 {
                     "target_field": target["field"],
@@ -107,11 +90,11 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
                     "method": "No Match",
                     "status": "NoMap",
                     "reason": "No candidate above threshold",
-                    "ai_suggested_source": top["source_field"] if top else "",
-                    "ai_confidence": top["confidence"] if top else "",
-                    "ai_method": top["method"] if top else "",
-                    "ai_reason": top["reason"] if top else "",
-                    "ai_alternatives": alternatives,
+                    "ai_suggested_source": "",
+                    "ai_confidence": "",
+                    "ai_method": "",
+                    "ai_reason": "",
+                    "ai_alternatives": "",
                 }
             )
             continue
@@ -134,31 +117,41 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
             }
         )
 
-        if result.get("status") == "Review":
+    used_sources = set(matcher.used_source_fields)
 
-            excluded = set(matcher.used_source_fields)
-            excluded.discard(result.get("source_field", ""))
+    remaining_sources = [
+        x for x in source_metadata
+        if x.get("field", "") not in used_sources
+    ]
 
-            review_suggestions = nomap_ai.suggest_for_nomap(
-                target,
-                source_metadata,
-                exclude_sources=excluded
-            )
+    unmapped_source_review: list[dict] = []
 
-            if review_suggestions:
+    for source in remaining_sources:
 
-                top = review_suggestions[0]
+        suggestions = nomap_ai.suggest_targets_for_unmapped_source(
+            source,
+            target_metadata
+        )
 
-                alternatives = " | ".join([
-                    f"{x['source_field']} ({x['confidence']})"
-                    for x in review_suggestions
-                ])
+        top = suggestions[0] if suggestions else None
 
-                decisions[-1]["ai_suggested_source"] = top["source_field"]
-                decisions[-1]["ai_confidence"] = top["confidence"]
-                decisions[-1]["ai_method"] = top["method"]
-                decisions[-1]["ai_reason"] = top["reason"]
-                decisions[-1]["ai_alternatives"] = alternatives
+        alternatives = ""
+
+        if suggestions:
+            alternatives = " | ".join([
+                f"{x['target_field']} ({x['confidence']})"
+                for x in suggestions
+            ])
+
+        unmapped_source_review.append({
+            "source_field": source.get("field", ""),
+            "source_description": source.get("description", ""),
+            "suggested_target": top["target_field"] if top else "",
+            "confidence": top["confidence"] if top else "",
+            "method": top["method"] if top else "",
+            "reason": top["reason"] if top else "",
+            "alternatives": alternatives,
+        })
 
     summary = {
         "Total": len(decisions),
@@ -167,7 +160,11 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
         "NoMap": sum(1 for d in decisions if d["status"] == "NoMap"),
     }
 
-    return {"summary": summary, "decisions": decisions}
+    return {
+        "summary": summary,
+        "decisions": decisions,
+        "unmapped_source_review": unmapped_source_review,
+    }
 
 
 @app.post("/map/fields")
@@ -225,7 +222,17 @@ def map_files(
         workbook.save(mapped_output)
 
         audit_output = BytesIO()
-        pd.DataFrame(result["decisions"]).to_excel(audit_output, index=False, engine="openpyxl")
+        with pd.ExcelWriter(audit_output, engine="openpyxl") as writer:
+            pd.DataFrame(result["decisions"]).to_excel(
+                writer,
+                index=False,
+                sheet_name="Target Mapping Audit"
+            )
+            pd.DataFrame(result.get("unmapped_source_review", [])).to_excel(
+                writer,
+                index=False,
+                sheet_name="Unmapped Source AI Review"
+            )
 
         package_output = BytesIO()
         with zipfile.ZipFile(package_output, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
