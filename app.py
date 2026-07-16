@@ -1,5 +1,6 @@
 import streamlit as st
 from io import BytesIO
+import pandas as pd
 
 from excel_handler import SourceMetadataReader
 from workbook_handler import WorkbookHandler
@@ -81,6 +82,7 @@ if source_file and target_file:
 
                 logger = AuditLogger()
                 nomap_assistance = []
+                unmapped_source_assistance = []
 
                 mapped = 0
                 review = 0
@@ -223,14 +225,63 @@ if source_file and target_file:
                 output = BytesIO()
                 workbook.save(output)
 
+                # -------------------------------------------------
+                # Source-Centric Leftover Review
+                # -------------------------------------------------
+
+                used_sources = set(matcher.used_source_fields)
+
+                remaining_sources = [
+                    x for x in source_metadata
+                    if x.get("field", "") not in used_sources
+                ]
+
+                for source in remaining_sources:
+
+                    suggestions = nomap_ai.suggest_targets_for_unmapped_source(
+                        source,
+                        target_metadata
+                    )
+
+                    top = suggestions[0] if suggestions else None
+
+                    alternatives = ""
+
+                    if suggestions:
+                        alternatives = " | ".join([
+                            f"{x['target_field']} ({x['confidence']})"
+                            for x in suggestions
+                        ])
+
+                    unmapped_source_assistance.append({
+                        "Source Field": source.get("field", ""),
+                        "Source Description": source.get("description", ""),
+                        "Suggested Target": top["target_field"] if top else "",
+                        "Confidence": top["confidence"] if top else "",
+                        "Method": top["method"] if top else "",
+                        "Reason": top["reason"] if top else "",
+                        "Alternatives": alternatives
+                    })
+
                 # Save audit report
                 audit_output = BytesIO()
 
-                logger.dataframe().to_excel(
+                with pd.ExcelWriter(
                     audit_output,
-                    index=False,
                     engine="openpyxl"
-                )
+                ) as writer:
+
+                    logger.dataframe().to_excel(
+                        writer,
+                        sheet_name="Target Mapping Audit",
+                        index=False
+                    )
+
+                    pd.DataFrame(unmapped_source_assistance).to_excel(
+                        writer,
+                        sheet_name="Unmapped Source AI Review",
+                        index=False
+                    )
 
             st.success("✅ Mapping Completed")
 
@@ -266,6 +317,13 @@ if source_file and target_file:
                     nomap_assistance,
                     use_container_width=True
                 )
+
+            st.subheader("🧩 Unmapped Source AI Review")
+
+            st.dataframe(
+                pd.DataFrame(unmapped_source_assistance),
+                use_container_width=True
+            )
 
             # -------------------------------------------------
             # Download Buttons

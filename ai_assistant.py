@@ -178,3 +178,139 @@ class NoMapAIAssistant:
             })
 
         return output
+
+    def suggest_targets_for_unmapped_source(
+        self,
+        source,
+        target_metadata,
+        exclude_targets=None
+    ):
+        """
+        Return top target suggestions for a source field that remained unused.
+        """
+
+        if not source or not target_metadata:
+            return []
+
+        excluded = set(exclude_targets or [])
+
+        source_field = source.get("field", "")
+        source_description = source.get("description", "")
+
+        if source_field == "":
+            return []
+
+        strict_candidates = []
+        fallback_candidates = []
+
+        for target in target_metadata:
+
+            target_field = target.get("field", "")
+            target_description = target.get("description", "")
+
+            if target_field == "":
+                continue
+
+            if target_field in excluded:
+                continue
+
+            if violates_business_rule(source_field, target_field):
+                continue
+
+            result = self.scorer.score(
+                source_field=source_field,
+                source_description=source_description,
+                target_field=target_field,
+                target_description=target_description
+            )
+
+            if result["confidence"] < 60:
+                continue
+
+            overlap_count, target_token_count = self._overlap_metrics(
+                source_field,
+                target_field
+            )
+
+            method = result["method"]
+
+            if method in HEURISTIC_METHODS:
+
+                if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
+                    fallback_candidates.append({
+                        "target_field": target_field,
+                        "target_description": target_description,
+                        "confidence": result["confidence"],
+                        "method": method,
+                        "reason": result["reason"],
+                        "overlap_count": overlap_count,
+                        "deterministic": False
+                    })
+                    continue
+
+                if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
+                    continue
+
+                if (
+                    method == "Fuzzy"
+                    and target_token_count > 1
+                    and overlap_count < 2
+                ):
+                    fallback_candidates.append({
+                        "target_field": target_field,
+                        "target_description": target_description,
+                        "confidence": result["confidence"],
+                        "method": method,
+                        "reason": result["reason"],
+                        "overlap_count": overlap_count,
+                        "deterministic": False
+                    })
+                    continue
+
+                if method == "Abbreviation" and overlap_count == 0:
+                    continue
+
+            strict_candidates.append({
+                "target_field": target_field,
+                "target_description": target_description,
+                "confidence": result["confidence"],
+                "method": method,
+                "reason": result["reason"],
+                "overlap_count": overlap_count,
+                "deterministic": method in DETERMINISTIC_METHODS
+            })
+
+        strict_candidates.sort(
+            key=lambda x: (
+                x["deterministic"],
+                x["confidence"],
+                x["overlap_count"]
+            ),
+            reverse=True
+        )
+
+        fallback_candidates.sort(
+            key=lambda x: (
+                x["confidence"],
+                x["overlap_count"]
+            ),
+            reverse=True
+        )
+
+        candidates = strict_candidates
+
+        if not candidates:
+            candidates = fallback_candidates
+
+        output = []
+
+        for c in candidates[:self.top_n]:
+            output.append({
+                "target_field": c["target_field"],
+                "target_description": c["target_description"],
+                "confidence": c["confidence"],
+                "method": c["method"],
+                "reason": c["reason"]
+            })
+
+        return output
