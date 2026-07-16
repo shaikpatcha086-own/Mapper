@@ -58,7 +58,8 @@ class NoMapAIAssistant:
 
         excluded = set(exclude_sources or [])
 
-        candidates = []
+        strict_candidates = []
+        fallback_candidates = []
 
         target_field = target.get("field", "")
         target_description = target.get("description", "")
@@ -84,7 +85,7 @@ class NoMapAIAssistant:
                 target_description=target_description
             )
 
-            if result["confidence"] < MIN_CONFIDENCE_SCORE:
+            if result["confidence"] < 70:
                 continue
 
             overlap_count, target_token_count = self._overlap_metrics(
@@ -97,6 +98,16 @@ class NoMapAIAssistant:
             if method in HEURISTIC_METHODS:
 
                 if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
+                    # Keep weaker heuristic hits as fallback only.
+                    fallback_candidates.append({
+                        "source_field": source_field,
+                        "source_description": source_description,
+                        "confidence": result["confidence"],
+                        "method": method,
+                        "reason": result["reason"],
+                        "overlap_count": overlap_count,
+                        "deterministic": False
+                    })
                     continue
 
                 if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
@@ -108,12 +119,21 @@ class NoMapAIAssistant:
                     and target_token_count > 1
                     and overlap_count < 2
                 ):
+                    fallback_candidates.append({
+                        "source_field": source_field,
+                        "source_description": source_description,
+                        "confidence": result["confidence"],
+                        "method": method,
+                        "reason": result["reason"],
+                        "overlap_count": overlap_count,
+                        "deterministic": False
+                    })
                     continue
 
                 if method == "Abbreviation" and overlap_count == 0:
                     continue
 
-            candidates.append({
+            strict_candidates.append({
                 "source_field": source_field,
                 "source_description": source_description,
                 "confidence": result["confidence"],
@@ -123,7 +143,7 @@ class NoMapAIAssistant:
                 "deterministic": method in DETERMINISTIC_METHODS
             })
 
-        candidates.sort(
+        strict_candidates.sort(
             key=lambda x: (
                 x["deterministic"],
                 x["confidence"],
@@ -131,6 +151,19 @@ class NoMapAIAssistant:
             ),
             reverse=True
         )
+
+        fallback_candidates.sort(
+            key=lambda x: (
+                x["confidence"],
+                x["overlap_count"]
+            ),
+            reverse=True
+        )
+
+        candidates = strict_candidates
+
+        if not candidates:
+            candidates = fallback_candidates
 
         output = []
 

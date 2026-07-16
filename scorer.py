@@ -278,7 +278,21 @@ class Scorer:
         # Acronym Match
         # ==================================================
 
-        if acronym(source_field) == acronym(target_field):
+        source_tokens = tokenize(source_field)
+        target_tokens = tokenize(target_field)
+
+        source_acr = acronym(source_field)
+        target_acr = acronym(target_field)
+
+        # Acronym matching is meaningful only when both names are
+        # multi-token; otherwise single-token values collapse to one
+        # letter and create false positives (e.g. City -> CUSTOMERGROUPID).
+        if (
+            len(source_tokens) >= 2
+            and len(target_tokens) >= 2
+            and len(source_acr) >= 2
+            and source_acr == target_acr
+        ):
 
             update(
 
