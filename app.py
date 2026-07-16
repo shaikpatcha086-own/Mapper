@@ -155,7 +155,57 @@ if source_file and target_file:
                         result["source_field"]
                     )
 
-                    logger.add(result)
+                    review_suggestions = []
+                    review_top = None
+                    review_alternatives = ""
+
+                    if result.get("status") == "Review":
+
+                        excluded = set(matcher.used_source_fields)
+                        excluded.discard(result.get("source_field", ""))
+
+                        review_suggestions = nomap_ai.suggest_for_nomap(
+                            target,
+                            source_metadata,
+                            exclude_sources=excluded
+                        )
+
+                        review_top = (
+                            review_suggestions[0]
+                            if review_suggestions
+                            else None
+                        )
+
+                        if review_suggestions:
+                            review_alternatives = " | ".join([
+                                f"{x['source_field']} ({x['confidence']})"
+                                for x in review_suggestions
+                            ])
+
+                    logger.add({
+                        **result,
+                        "ai_suggested_source": (
+                            review_top["source_field"]
+                            if review_top
+                            else ""
+                        ),
+                        "ai_confidence": (
+                            review_top["confidence"]
+                            if review_top
+                            else ""
+                        ),
+                        "ai_method": (
+                            review_top["method"]
+                            if review_top
+                            else ""
+                        ),
+                        "ai_reason": (
+                            review_top["reason"]
+                            if review_top
+                            else ""
+                        ),
+                        "ai_alternatives": review_alternatives
+                    })
 
                     if result["status"] == "Auto Accept":
 

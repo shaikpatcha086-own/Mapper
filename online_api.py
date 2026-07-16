@@ -134,6 +134,32 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
             }
         )
 
+        if result.get("status") == "Review":
+
+            excluded = set(matcher.used_source_fields)
+            excluded.discard(result.get("source_field", ""))
+
+            review_suggestions = nomap_ai.suggest_for_nomap(
+                target,
+                source_metadata,
+                exclude_sources=excluded
+            )
+
+            if review_suggestions:
+
+                top = review_suggestions[0]
+
+                alternatives = " | ".join([
+                    f"{x['source_field']} ({x['confidence']})"
+                    for x in review_suggestions
+                ])
+
+                decisions[-1]["ai_suggested_source"] = top["source_field"]
+                decisions[-1]["ai_confidence"] = top["confidence"]
+                decisions[-1]["ai_method"] = top["method"]
+                decisions[-1]["ai_reason"] = top["reason"]
+                decisions[-1]["ai_alternatives"] = alternatives
+
     summary = {
         "Total": len(decisions),
         "Auto Accept": sum(1 for d in decisions if d["status"] == "Auto Accept"),

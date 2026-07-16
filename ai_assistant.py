@@ -85,7 +85,7 @@ class NoMapAIAssistant:
                 target_description=target_description
             )
 
-            if result["confidence"] < 70:
+            if result["confidence"] < 60:
                 continue
 
             overlap_count, target_token_count = self._overlap_metrics(
