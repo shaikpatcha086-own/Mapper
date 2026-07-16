@@ -82,6 +82,7 @@ if source_file and target_file:
 
                 logger = AuditLogger()
                 nomap_assistance = []
+                source_status_map = {}
 
                 mapped = 0
                 review = 0
@@ -131,6 +132,8 @@ if source_file and target_file:
                         result["source_field"]
                     )
 
+                    source_status_map[result["source_field"]] = result["status"]
+
                     logger.add({
                         **result,
                         "ai_suggested_source": "",
@@ -160,11 +163,10 @@ if source_file and target_file:
                 # AI Assistance For NoMap
                 # -------------------------------------------------
 
-                used_sources = set(matcher.used_source_fields)
-
                 remaining_sources = [
                     x for x in source_metadata
-                    if x.get("field", "") not in used_sources
+                    if source_status_map.get(x.get("field", ""), "NoMap")
+                    != "Auto Accept"
                 ]
 
                 for source in remaining_sources:
@@ -177,8 +179,14 @@ if source_file and target_file:
                     top = suggestions[0] if suggestions else None
 
                     alternatives = ""
+                    possible_targets = []
 
                     if suggestions:
+                        possible_targets = [
+                            f"{x['target_field']} ({x['confidence']})"
+                            for x in suggestions
+                        ]
+
                         alternatives = " | ".join([
                             f"{x['target_field']} ({x['confidence']})"
                             for x in suggestions
@@ -187,10 +195,15 @@ if source_file and target_file:
                     nomap_assistance.append({
                         "Suggested Source": source.get("field", ""),
                         "Source Description": source.get("description", ""),
+                        "Source Status": source_status_map.get(
+                            source.get("field", ""),
+                            "NoMap"
+                        ),
                         "Target Suggestion": top["target_field"] if top else "",
                         "Confidence": top["confidence"] if top else 0,
                         "Method": top["method"] if top else "",
                         "Reason": top["reason"] if top else "No suggestion from AI",
+                        "Possible Targets": " | ".join(possible_targets),
                         "Alternatives": alternatives
                     })
 
