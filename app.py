@@ -106,7 +106,8 @@ if source_file and target_file:
 
                         suggestions = nomap_ai.suggest_for_nomap(
                             target,
-                            source_metadata
+                            source_metadata,
+                            exclude_sources=matcher.used_source_fields
                         )
 
                         top = suggestions[0] if suggestions else None

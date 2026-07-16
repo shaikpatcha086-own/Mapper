@@ -83,7 +83,8 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
 
             suggestions = nomap_ai.suggest_for_nomap(
                 target,
-                source_metadata
+                source_metadata,
+                exclude_sources=matcher.used_source_fields
             )
 
             top = suggestions[0] if suggestions else None

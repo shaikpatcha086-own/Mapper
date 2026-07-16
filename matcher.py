@@ -14,6 +14,7 @@ from config import (
     HEURISTIC_MIN_CONFIDENCE,
     DETERMINISTIC_METHODS,
     HEURISTIC_METHODS,
+    STRICT_OVERLAP_METHODS,
     GENERIC_MATCH_TOKENS
 )
 
@@ -88,11 +89,13 @@ class Matcher:
                 if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
                     continue
 
-                if not self._has_domain_overlap(
-                    source["field"],
-                    target["field"]
-                ):
-                    continue
+                if result["method"] in STRICT_OVERLAP_METHODS:
+
+                    if not self._has_domain_overlap(
+                        source["field"],
+                        target["field"]
+                    ):
+                        continue
 
             candidates.append({
 

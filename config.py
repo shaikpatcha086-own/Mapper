@@ -35,7 +35,7 @@ AUTO_ACCEPT_THRESHOLD = 95
 # ---------------------------------------------------------
 
 MIN_CONFIDENCE_SCORE = 85
-HEURISTIC_MIN_CONFIDENCE = 92
+HEURISTIC_MIN_CONFIDENCE = 88
 
 DETERMINISTIC_METHODS = {
     "Exact",
@@ -54,6 +54,12 @@ HEURISTIC_METHODS = {
     "Description",
     "Source Description",
     "Abbreviation",
+    "Contains"
+}
+
+STRICT_OVERLAP_METHODS = {
+    "Semantic",
+    "Fuzzy",
     "Contains"
 }
 

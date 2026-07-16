@@ -10,6 +10,15 @@ in the main deterministic mapping pass.
 
 from scorer import Scorer
 from rules import violates_business_rule
+from normalizer import fingerprint_tokens
+from config import (
+    MIN_CONFIDENCE_SCORE,
+    HEURISTIC_MIN_CONFIDENCE,
+    DETERMINISTIC_METHODS,
+    HEURISTIC_METHODS,
+    STRICT_OVERLAP_METHODS,
+    GENERIC_MATCH_TOKENS
+)
 
 
 class NoMapAIAssistant:
@@ -20,7 +29,24 @@ class NoMapAIAssistant:
 
         self.scorer = Scorer()
 
-    def suggest_for_nomap(self, target, source_metadata):
+    def _overlap_metrics(self, source_field, target_field):
+
+        source_tokens = set(fingerprint_tokens(source_field))
+        target_tokens = set(fingerprint_tokens(target_field))
+
+        source_tokens -= GENERIC_MATCH_TOKENS
+        target_tokens -= GENERIC_MATCH_TOKENS
+
+        overlap = source_tokens.intersection(target_tokens)
+
+        return len(overlap), len(target_tokens)
+
+    def suggest_for_nomap(
+        self,
+        target,
+        source_metadata,
+        exclude_sources=None
+    ):
         """
         Return top candidate suggestions for a target field.
 
@@ -29,6 +55,8 @@ class NoMapAIAssistant:
 
         if not target or not source_metadata:
             return []
+
+        excluded = set(exclude_sources or [])
 
         candidates = []
 
@@ -43,6 +71,9 @@ class NoMapAIAssistant:
             if source_field == "":
                 continue
 
+            if source_field in excluded:
+                continue
+
             if violates_business_rule(source_field, target_field):
                 continue
 
@@ -53,20 +84,64 @@ class NoMapAIAssistant:
                 target_description=target_description
             )
 
-            if result["confidence"] <= 0:
+            if result["confidence"] < MIN_CONFIDENCE_SCORE:
                 continue
+
+            overlap_count, target_token_count = self._overlap_metrics(
+                source_field,
+                target_field
+            )
+
+            method = result["method"]
+
+            if method in HEURISTIC_METHODS:
+
+                if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
+                    continue
+
+                if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
+                    continue
+
+                # Prevent broad fuzzy suggestions for highly specific targets.
+                if (
+                    method == "Fuzzy"
+                    and target_token_count > 1
+                    and overlap_count < 2
+                ):
+                    continue
+
+                if method == "Abbreviation" and overlap_count == 0:
+                    continue
 
             candidates.append({
                 "source_field": source_field,
                 "source_description": source_description,
                 "confidence": result["confidence"],
-                "method": result["method"],
-                "reason": result["reason"]
+                "method": method,
+                "reason": result["reason"],
+                "overlap_count": overlap_count,
+                "deterministic": method in DETERMINISTIC_METHODS
             })
 
         candidates.sort(
-            key=lambda x: x["confidence"],
+            key=lambda x: (
+                x["deterministic"],
+                x["confidence"],
+                x["overlap_count"]
+            ),
             reverse=True
         )
 
-        return candidates[:self.top_n]
+        output = []
+
+        for c in candidates[:self.top_n]:
+
+            output.append({
+                "source_field": c["source_field"],
+                "source_description": c["source_description"],
+                "confidence": c["confidence"],
+                "method": c["method"],
+                "reason": c["reason"]
+            })
+
+        return output
