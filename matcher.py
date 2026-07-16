@@ -11,7 +11,8 @@ from ranking import RankingEngine
 from normalizer import fingerprint_tokens
 from config import (
     MIN_CONFIDENCE_SCORE,
-    HEURISTIC_MIN_CONFIDENCE,
+    REVIEW_HEURISTIC_MIN_CONFIDENCE,
+    AUTO_ACCEPT_HEURISTIC_MIN_CONFIDENCE,
     DETERMINISTIC_METHODS,
     HEURISTIC_METHODS,
     STRICT_OVERLAP_METHODS,
@@ -86,7 +87,7 @@ class Matcher:
 
             if result["method"] in HEURISTIC_METHODS:
 
-                if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
+                if result["confidence"] < REVIEW_HEURISTIC_MIN_CONFIDENCE:
                     continue
 
                 if result["method"] in STRICT_OVERLAP_METHODS:
@@ -155,12 +156,28 @@ class Matcher:
 
         if best["method"] in HEURISTIC_METHODS:
 
-            best["status"] = "Review"
+            has_overlap = self._has_domain_overlap(
+                best["source_field"],
+                best["target_field"]
+            )
 
-            if best["reason"] != "Multiple high-confidence candidates":
-                best["reason"] = (
-                    "Heuristic method requires manual review"
-                )
+            if (
+                has_overlap
+                and best["confidence"] >= AUTO_ACCEPT_HEURISTIC_MIN_CONFIDENCE
+            ):
+                best["status"] = "Auto Accept"
+
+                if best["reason"] == "Multiple high-confidence candidates":
+                    best["status"] = "Review"
+
+            else:
+
+                best["status"] = "Review"
+
+                if best["reason"] != "Multiple high-confidence candidates":
+                    best["reason"] = (
+                        "Heuristic method requires manual review"
+                    )
 
         elif best["method"] not in DETERMINISTIC_METHODS:
 
