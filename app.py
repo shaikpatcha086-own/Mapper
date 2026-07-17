@@ -86,6 +86,7 @@ if source_file and target_file:
                 logger = AuditLogger()
                 nomap_assistance = []
                 source_status_map = {}
+                nomap_target_fields = []
 
                 mapped = 0
                 review = 0
@@ -127,6 +128,8 @@ if source_file and target_file:
                             "ai_alternatives": ""
                         })
 
+                        nomap_target_fields.append(target["field"])
+
                         nomap += 1
                         continue
 
@@ -158,6 +161,11 @@ if source_file and target_file:
 
                         nomap += 1
 
+                nomap_targets = [
+                    x for x in target_metadata
+                    if x.get("field", "") in set(nomap_target_fields)
+                ]
+
                 # Save mapped workbook
                 output = BytesIO()
                 workbook.save(output)
@@ -176,7 +184,8 @@ if source_file and target_file:
 
                     suggestions = nomap_ai.suggest_targets_for_unmapped_source(
                         source,
-                        target_metadata
+                        nomap_targets,
+                        max_results=0
                     )
 
                     top = suggestions[0] if suggestions else None
