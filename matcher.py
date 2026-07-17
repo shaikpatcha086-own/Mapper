@@ -143,10 +143,13 @@ class Matcher:
                 reverse=True
             )[1]
 
-            if abs(
-                best["confidence"]
-                - second["confidence"]
-            ) <= 2:
+            if (
+                best["confidence"] < 100
+                and abs(
+                    best["confidence"]
+                    - second["confidence"]
+                ) <= 2
+            ):
 
                 best["status"] = "Review"
 
