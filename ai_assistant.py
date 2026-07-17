@@ -183,8 +183,7 @@ class NoMapAIAssistant:
         self,
         source,
         target_metadata,
-        exclude_targets=None,
-        max_results=None
+        exclude_targets=None
     ):
         """
         Return top target suggestions for a source field that remained unused.
@@ -305,11 +304,7 @@ class NoMapAIAssistant:
 
         output = []
 
-        limit = self.top_n if max_results is None else max_results
-
-        selected = candidates if limit <= 0 else candidates[:limit]
-
-        for c in selected:
+        for c in candidates[:self.top_n]:
             output.append({
                 "target_field": c["target_field"],
                 "target_description": c["target_description"],

@@ -75,7 +75,6 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
     matcher = Matcher()
     nomap_ai = NoMapAIAssistant(top_n=3)
     decisions: list[dict] = []
-    nomap_target_fields: list[str] = []
 
     for target in target_metadata:
         result = matcher.match_target(target, source_metadata)
@@ -98,7 +97,6 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
                     "ai_alternatives": "",
                 }
             )
-            nomap_target_fields.append(target["field"])
             continue
 
         decisions.append(
@@ -126,19 +124,13 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
         if x.get("field", "") not in used_sources
     ]
 
-    nomap_targets = [
-        x for x in target_metadata
-        if x.get("field", "") in set(nomap_target_fields)
-    ]
-
     unmapped_source_review: list[dict] = []
 
     for source in remaining_sources:
 
         suggestions = nomap_ai.suggest_targets_for_unmapped_source(
             source,
-            nomap_targets,
-            max_results=0
+            target_metadata
         )
 
         top = suggestions[0] if suggestions else None
