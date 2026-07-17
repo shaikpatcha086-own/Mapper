@@ -17,6 +17,9 @@ st.set_page_config(
     layout="wide"
 )
 
+if "mapping_result" not in st.session_state:
+    st.session_state.mapping_result = None
+
 st.title("🚀 D365 Finance & Operations Metadata Mapper V3")
 
 st.write(
@@ -227,13 +230,25 @@ if source_file and target_file:
                         index=False
                     )
 
+                st.session_state.mapping_result = {
+                    "summary": logger.summary(),
+                    "audit_df": logger.dataframe(),
+                    "nomap_df": pd.DataFrame(nomap_assistance),
+                    "mapped_workbook": output.getvalue(),
+                    "audit_workbook": audit_output.getvalue(),
+                }
+
+        if st.session_state.mapping_result is not None:
+
+            result = st.session_state.mapping_result
+
             st.success("✅ Mapping Completed")
 
             # -------------------------------------------------
             # Statistics
             # -------------------------------------------------
 
-            summary = logger.summary()
+            summary = result["summary"]
 
             c1, c2, c3, c4 = st.columns(4)
 
@@ -249,14 +264,14 @@ if source_file and target_file:
             st.subheader("📋 Mapping Audit Report")
 
             st.dataframe(
-                logger.dataframe(),
+                result["audit_df"],
                 use_container_width=True
             )
 
             st.subheader("🤖 AI Assistance For NoMap")
 
             st.dataframe(
-                pd.DataFrame(nomap_assistance),
+                result["nomap_df"],
                 use_container_width=True
             )
 
@@ -272,7 +287,7 @@ if source_file and target_file:
 
                     label="📥 Download Mapped Workbook",
 
-                    data=output.getvalue(),
+                    data=result["mapped_workbook"],
 
                     file_name="Mapped_Target_Metadata.xlsx",
 
@@ -286,7 +301,7 @@ if source_file and target_file:
 
                     label="📊 Download Audit Report",
 
-                    data=audit_output.getvalue(),
+                    data=result["audit_workbook"],
 
                     file_name="Mapping_Audit_Report.xlsx",
 
