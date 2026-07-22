@@ -36,9 +36,10 @@ col1, col2 = st.columns(2)
 
 with col1:
 
-    source_file = st.file_uploader(
-        "📂 Source Metadata",
-        type=["xlsx", "csv", "txt"]
+    source_files = st.file_uploader(
+        "📂 Source Metadata (Single or Multiple)",
+        type=["xlsx", "csv", "txt"],
+        accept_multiple_files=True
     )
 
 with col2:
@@ -52,23 +53,33 @@ with col2:
 # Main
 # ---------------------------------------------------------
 
-if source_file and target_file:
+if source_files and target_file:
 
     try:
 
-        reader = SourceMetadataReader(source_file)
-        reader.load()
+        source_metadata = []
+        preview_frames = []
 
-        source_metadata = reader.get_metadata()
+        for source_file in source_files:
+
+            reader = SourceMetadataReader(source_file)
+            reader.load()
+
+            source_metadata.extend(reader.get_metadata())
+
+            preview = reader.preview()
+
+            if preview is not None and not preview.empty:
+                preview_frames.append(preview)
 
         st.success(
-            f"Loaded {len(source_metadata)} source fields."
+            f"Loaded {len(source_metadata)} source fields from {len(source_files)} source file(s)."
         )
 
         st.subheader("Source Preview")
 
         st.dataframe(
-            reader.preview(),
+            pd.concat(preview_frames, ignore_index=True) if preview_frames else pd.DataFrame(),
             use_container_width=True
         )
 
@@ -109,9 +120,17 @@ if source_file and target_file:
                             "NoMap"
                         )
 
+                        workbook.update_mapping_origin(
+                            target["row"],
+                            "NoMap"
+                        )
+
                         logger.add({
                             "source_field": "NoMap",
                             "source_description": "",
+                            "source_entity": "",
+                            "source_sheet": "",
+                            "source_file": "",
                             "target_field": target["field"],
                             "target_description": target.get(
                                 "description", ""
@@ -120,6 +139,7 @@ if source_file and target_file:
                             "method": "No Match",
                             "status": "NoMap",
                             "reason": "No candidate above threshold",
+                            "mapping_source": "NoMap",
                             "ai_suggested_source": "",
                             "ai_confidence": "",
                             "ai_method": "",
@@ -135,10 +155,24 @@ if source_file and target_file:
                         result["source_field"]
                     )
 
-                    source_status_map[result["source_field"]] = result["status"]
+                    mapped_from = (
+                        result.get("source_entity", "")
+                        or result.get("source_sheet", "")
+                        or result.get("source_file", "")
+                    )
+
+                    workbook.update_mapping_origin(
+                        target["row"],
+                        mapped_from
+                    )
+
+                    source_status_map[
+                        result.get("source_id", result["source_field"])
+                    ] = result["status"]
 
                     logger.add({
                         **result,
+                        "mapping_source": mapped_from,
                         "ai_suggested_source": "",
                         "ai_confidence": "",
                         "ai_method": "",
@@ -168,7 +202,10 @@ if source_file and target_file:
 
                 remaining_sources = [
                     x for x in source_metadata
-                    if source_status_map.get(x.get("field", ""), "NoMap")
+                    if source_status_map.get(
+                        x.get("source_id", x.get("field", "")),
+                        "NoMap"
+                    )
                     != "Auto Accept"
                 ]
 
@@ -199,8 +236,13 @@ if source_file and target_file:
                         "Suggested Source": source.get("field", ""),
                         "Source Description": source.get("description", ""),
                         "Source Status": source_status_map.get(
-                            source.get("field", ""),
+                            source.get("source_id", source.get("field", "")),
                             "NoMap"
+                        ),
+                        "Mapped From": (
+                            source.get("source_entity", "")
+                            or source.get("source_sheet", "")
+                            or source.get("source_file", "")
                         ),
                         "Target Suggestion": top["target_field"] if top else "",
                         "Confidence": top["confidence"] if top else 0,
@@ -316,4 +358,4 @@ if source_file and target_file:
 
 else:
 
-    st.info("Please upload both files.")
+    st.info("Please upload at least one source file and one target file.")

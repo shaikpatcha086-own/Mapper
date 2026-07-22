@@ -111,6 +111,18 @@ SOURCE_DESCRIPTION_HEADERS = [
 
 ]
 
+SOURCE_ENTITY_HEADERS = [
+
+    "entity",
+    "entity name",
+    "table",
+    "table name",
+    "source entity",
+    "source table",
+    "data entity"
+
+]
+
 # ---------------------------------------------------------
 # Supported Target Header Names
 # ---------------------------------------------------------
@@ -136,6 +148,18 @@ TARGET_SOURCEFIELD_HEADERS = [
     "source field"
 
 ]
+
+TARGET_MAPPING_ORIGIN_HEADERS = [
+
+    "mapping source",
+    "mapped from",
+    "mapped from entity",
+    "mapping source entity",
+    "mapping origin"
+
+]
+
+TARGET_MAPPING_ORIGIN_HEADER_NAME = "Mapping Source"
 
 # ---------------------------------------------------------
 # Normalization

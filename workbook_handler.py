@@ -11,11 +11,14 @@ formatting. Only updates the source_field column.
 """
 
 from openpyxl import load_workbook
+from copy import copy
 
 from config import (
     TARGET_FIELD_HEADERS,
     TARGET_DESCRIPTION_HEADERS,
-    TARGET_SOURCEFIELD_HEADERS
+    TARGET_SOURCEFIELD_HEADERS,
+    TARGET_MAPPING_ORIGIN_HEADERS,
+    TARGET_MAPPING_ORIGIN_HEADER_NAME
 )
 
 from normalizer import normalize
@@ -36,6 +39,7 @@ class WorkbookHandler:
         self.field_col = None
         self.description_col = None
         self.source_field_col = None
+        self.mapping_origin_col = None
 
         self._find_columns()
 
@@ -81,11 +85,43 @@ class WorkbookHandler:
 
                 self.source_field_col = cell.column
 
+            elif value in TARGET_MAPPING_ORIGIN_HEADERS:
+
+                self.mapping_origin_col = cell.column
+
         if self.field_col is None:
             raise Exception("Field column not found.")
 
         if self.source_field_col is None:
             raise Exception("source_field column not found.")
+
+        if self.mapping_origin_col is None:
+
+            self.mapping_origin_col = self.sheet.max_column + 1
+
+            header_cell = self.sheet.cell(
+                row=self.header_row,
+                column=self.mapping_origin_col
+            )
+
+            header_cell.value = TARGET_MAPPING_ORIGIN_HEADER_NAME
+
+            source_header_cell = self.sheet.cell(
+                row=self.header_row,
+                column=self.source_field_col
+            )
+
+            if source_header_cell.has_style:
+                header_cell._style = copy(source_header_cell._style)
+
+            if source_header_cell.number_format:
+                header_cell.number_format = source_header_cell.number_format
+
+            if source_header_cell.protection:
+                header_cell.protection = copy(source_header_cell.protection)
+
+            if source_header_cell.alignment:
+                header_cell.alignment = copy(source_header_cell.alignment)
 
     # ---------------------------------------------------------
     # Read Target Metadata
@@ -149,6 +185,17 @@ class WorkbookHandler:
             row=row_number,
             column=self.source_field_col
         ).value = source_field
+
+    def update_mapping_origin(
+        self,
+        row_number,
+        mapping_origin
+    ):
+
+        self.sheet.cell(
+            row=row_number,
+            column=self.mapping_origin_col
+        ).value = mapping_origin
 
     # ---------------------------------------------------------
     # Save Workbook

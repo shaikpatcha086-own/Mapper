@@ -86,10 +86,14 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
                     "target_description": target.get("description", ""),
                     "source_field": "NoMap",
                     "source_description": "",
+                    "source_entity": "",
+                    "source_sheet": "",
+                    "source_file": "",
                     "confidence": 0,
                     "method": "No Match",
                     "status": "NoMap",
                     "reason": "No candidate above threshold",
+                    "mapping_source": "NoMap",
                     "ai_suggested_source": "",
                     "ai_confidence": "",
                     "ai_method": "",
@@ -105,10 +109,18 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
                 "target_description": result.get("target_description", ""),
                 "source_field": result["source_field"],
                 "source_description": result.get("source_description", ""),
+                "source_entity": result.get("source_entity", ""),
+                "source_sheet": result.get("source_sheet", ""),
+                "source_file": result.get("source_file", ""),
                 "confidence": result["confidence"],
                 "method": result["method"],
                 "status": result["status"],
                 "reason": result["reason"],
+                "mapping_source": (
+                    result.get("source_entity", "")
+                    or result.get("source_sheet", "")
+                    or result.get("source_file", "")
+                ),
                 "ai_suggested_source": "",
                 "ai_confidence": "",
                 "ai_method": "",
@@ -121,7 +133,7 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
 
     remaining_sources = [
         x for x in source_metadata
-        if x.get("field", "") not in used_sources
+        if x.get("source_id", x.get("field", "")) not in used_sources
     ]
 
     unmapped_source_review: list[dict] = []
@@ -191,23 +203,38 @@ def map_fields(payload: MapFieldsRequest):
 
 @app.post("/map/files")
 def map_files(
-    source_file: UploadFile = File(...),
+    source_file: UploadFile | None = File(default=None),
+    source_files: list[UploadFile] | None = File(default=None),
     target_file: UploadFile = File(...),
 ):
-    source_name = (source_file.filename or "").lower()
+    uploaded_sources: list[UploadFile] = []
+
+    if source_file is not None:
+        uploaded_sources.append(source_file)
+
+    if source_files:
+        uploaded_sources.extend(source_files)
+
+    if not uploaded_sources:
+        raise HTTPException(status_code=400, detail="At least one source file is required")
+
+    source_names = [((f.filename or "").lower()) for f in uploaded_sources]
     target_name = (target_file.filename or "").lower()
 
-    if not source_name.endswith((".xlsx", ".csv", ".txt")):
-        raise HTTPException(status_code=400, detail="Source file must be xlsx, csv, or txt")
+    if not all(name.endswith((".xlsx", ".csv", ".txt")) for name in source_names):
+        raise HTTPException(status_code=400, detail="Each source file must be xlsx, csv, or txt")
 
     if not target_name.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Target file must be xlsx")
 
     try:
-        source_adapter = UploadedFileAdapter(source_file)
-        source_reader = SourceMetadataReader(source_adapter)
-        source_reader.load()
-        source_metadata = source_reader.get_metadata()
+        source_metadata = []
+
+        for uploaded_source in uploaded_sources:
+            source_adapter = UploadedFileAdapter(uploaded_source)
+            source_reader = SourceMetadataReader(source_adapter)
+            source_reader.load()
+            source_metadata.extend(source_reader.get_metadata())
 
         target_file.file.seek(0)
         workbook = WorkbookHandler(target_file.file)
@@ -217,6 +244,7 @@ def map_files(
 
         for target_row, decision in zip(target_metadata, result["decisions"]):
             workbook.update_source_field(target_row["row"], decision["source_field"])
+            workbook.update_mapping_origin(target_row["row"], decision.get("mapping_source", ""))
 
         mapped_output = BytesIO()
         workbook.save(mapped_output)

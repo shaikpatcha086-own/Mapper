@@ -30,6 +30,15 @@ class Matcher:
 
         self.used_source_fields = set()
 
+    def _source_key(self, source):
+
+        source_id = source.get("source_id", "")
+
+        if source_id:
+            return source_id
+
+        return source.get("field", "")
+
     def _has_domain_overlap(self, source_field, target_field):
 
         source_tokens = set(fingerprint_tokens(source_field))
@@ -54,8 +63,10 @@ class Matcher:
 
         for source in source_metadata:
 
+            source_key = self._source_key(source)
+
             # Prevent duplicate mapping
-            if source["field"] in self.used_source_fields:
+            if source_key in self.used_source_fields:
                 continue
 
             # Business rule validation
@@ -101,6 +112,14 @@ class Matcher:
             candidates.append({
 
                 "source_field": source["field"],
+
+                "source_id": source.get("source_id", source_key),
+
+                "source_entity": source.get("source_entity", ""),
+
+                "source_sheet": source.get("source_sheet", ""),
+
+                "source_file": source.get("source_file", ""),
 
                 "source_description": source.get(
                     "description", ""
@@ -186,8 +205,6 @@ class Matcher:
 
             best["status"] = "Review"
 
-        self.used_source_fields.add(
-            best["source_field"]
-        )
+        self.used_source_fields.add(best.get("source_id", best["source_field"]))
 
         return best

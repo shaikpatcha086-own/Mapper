@@ -31,6 +31,18 @@ class AuditLogger:
             "Source Description":
                 result.get("source_description", ""),
 
+            "Source Entity":
+                result.get("source_entity", ""),
+
+            "Source Sheet":
+                result.get("source_sheet", ""),
+
+            "Source File":
+                result.get("source_file", ""),
+
+            "Mapping Source":
+                result.get("mapping_source", ""),
+
             "Target Field":
                 result.get("target_field", ""),
 

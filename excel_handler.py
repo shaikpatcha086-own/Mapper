@@ -17,10 +17,12 @@ TXT
 """
 
 import pandas as pd
+import os
 
 from config import (
     SOURCE_FIELD_HEADERS,
-    SOURCE_DESCRIPTION_HEADERS
+    SOURCE_DESCRIPTION_HEADERS,
+    SOURCE_ENTITY_HEADERS
 )
 
 from normalizer import normalize
@@ -34,8 +36,13 @@ class SourceMetadataReader:
 
         self.df = None
 
+        self.preview_df = None
+
+        self.metadata = []
+
         self.field_column = None
         self.description_column = None
+        self.entity_column = None
 
     # -----------------------------------------------------
     # Public
@@ -43,14 +50,46 @@ class SourceMetadataReader:
 
     def load(self):
 
+        self.uploaded_file.seek(0)
+
         filename = self.uploaded_file.name.lower()
+
+        self.metadata = []
 
         if filename.endswith(".xlsx"):
 
-            self.df = pd.read_excel(
+            sheets = pd.read_excel(
                 self.uploaded_file,
-                dtype=str
+                dtype=str,
+                sheet_name=None
             )
+
+            preview_parts = []
+
+            for sheet_name, sheet_df in sheets.items():
+
+                if sheet_df is None:
+                    continue
+
+                sheet_df = sheet_df.fillna("")
+
+                self.metadata.extend(
+                    self._extract_metadata(
+                        sheet_df,
+                        sheet_name=sheet_name
+                    )
+                )
+
+                preview = sheet_df.copy()
+                preview.insert(0, "__source_sheet", str(sheet_name))
+                preview_parts.append(preview)
+
+            self.df = next(iter(sheets.values()), pd.DataFrame())
+
+            if preview_parts:
+                self.preview_df = pd.concat(preview_parts, ignore_index=True)
+            else:
+                self.preview_df = pd.DataFrame()
 
         elif filename.endswith(".csv"):
 
@@ -58,6 +97,13 @@ class SourceMetadataReader:
                 self.uploaded_file,
                 dtype=str
             )
+
+            self.df = self.df.fillna("")
+            self.metadata = self._extract_metadata(
+                self.df,
+                sheet_name=self.uploaded_file.name
+            )
+            self.preview_df = self.df.copy()
 
         elif filename.endswith(".txt"):
 
@@ -68,58 +114,84 @@ class SourceMetadataReader:
                 dtype=str
             )
 
+            self.df = self.df.fillna("")
+            self.metadata = self._extract_metadata(
+                self.df,
+                sheet_name=self.uploaded_file.name
+            )
+            self.preview_df = self.df.copy()
+
         else:
 
             raise Exception(
                 f"Unsupported source file : {filename}"
             )
 
-        self.df = self.df.fillna("")
+        if self.df is None:
+            self.df = pd.DataFrame()
 
-        self._detect_columns()
+        if self.preview_df is None:
+            self.preview_df = self.df
 
     # -----------------------------------------------------
     # Detect Source Columns
     # -----------------------------------------------------
 
-    def _detect_columns(self):
+    def _detect_columns(self, df):
 
-        for column in self.df.columns:
+        field_column = None
+        description_column = None
+        entity_column = None
+
+        for column in df.columns:
 
             name = normalize(column)
 
-            if self.field_column is None:
+            if field_column is None:
 
                 if name in SOURCE_FIELD_HEADERS:
 
-                    self.field_column = column
+                    field_column = column
 
-            if self.description_column is None:
+            if description_column is None:
 
                 if name in SOURCE_DESCRIPTION_HEADERS:
 
-                    self.description_column = column
+                    description_column = column
+
+            if entity_column is None:
+
+                if name in SOURCE_ENTITY_HEADERS:
+
+                    entity_column = column
 
         # If no field header found
 
-        if self.field_column is None:
+        if field_column is None:
 
             # Assume first column
 
-            self.field_column = self.df.columns[0]
+            field_column = df.columns[0]
 
-    # -----------------------------------------------------
-    # Return Metadata
-    # -----------------------------------------------------
+        self.field_column = field_column
+        self.description_column = description_column
+        self.entity_column = entity_column
 
-    def get_metadata(self):
+        return field_column, description_column, entity_column
+
+    def _extract_metadata(self, df, sheet_name):
 
         metadata = []
 
-        for _, row in self.df.iterrows():
+        if df is None or df.empty:
+            return metadata
+
+        field_column, description_column, entity_column = self._detect_columns(df)
+
+        for row_index, row in df.iterrows():
 
             field = str(
-                row[self.field_column]
+                row[field_column]
             ).strip()
 
             if field == "":
@@ -130,21 +202,52 @@ class SourceMetadataReader:
 
             description = ""
 
-            if self.description_column:
+            if description_column:
 
                 description = str(
-                    row[self.description_column]
+                    row[description_column]
                 ).strip()
+
+            source_entity = ""
+
+            if entity_column:
+                source_entity = str(
+                    row[entity_column]
+                ).strip()
+
+            source_sheet = str(sheet_name or "")
+            source_file = str(self.uploaded_file.name or "")
+
+            if source_entity == "" and source_file:
+                source_entity = os.path.splitext(source_file)[0].strip()
 
             metadata.append({
 
                 "field": field,
 
-                "description": description
+                "description": description,
+
+                "source_entity": source_entity,
+
+                "source_sheet": source_sheet,
+
+                "source_file": source_file,
+
+                "source_id": (
+                    f"{source_file}::{source_sheet}::{int(row_index) + 1}"
+                )
 
             })
 
         return metadata
+
+    # -----------------------------------------------------
+    # Return Metadata
+    # -----------------------------------------------------
+
+    def get_metadata(self):
+
+        return list(self.metadata)
 
     # -----------------------------------------------------
     # Preview
@@ -152,4 +255,4 @@ class SourceMetadataReader:
 
     def preview(self):
 
-        return self.df
+        return self.preview_df
