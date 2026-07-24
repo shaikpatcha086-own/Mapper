@@ -31,6 +31,10 @@ class Matcher:
 
         self.used_source_fields = set()
 
+    def _expanded_tokens(self, value):
+
+        return set(expand_tokens(tokenize(value)))
+
     def _source_key(self, source):
 
         source_id = source.get("source_id", "")
@@ -62,6 +66,8 @@ class Matcher:
 
         candidates = []
 
+        target_tokens = self._expanded_tokens(target["field"])
+
         for source in source_metadata:
 
             source_key = self._source_key(source)
@@ -75,6 +81,13 @@ class Matcher:
                 source["field"],
                 target["field"]
             ):
+                continue
+
+            source_tokens = self._expanded_tokens(source["field"])
+
+            # Cheap prefilter: skip obviously unrelated pairs
+            # before running the full scoring engine.
+            if not source_tokens.intersection(target_tokens):
                 continue
 
             result = self.scorer.score(

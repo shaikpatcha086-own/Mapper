@@ -231,6 +231,10 @@ class Scorer:
                 "Business synonym match"
 
             )
+
+        expanded_overlap = len(
+            set(source_tokens).intersection(target_tokens)
+        ) > 0
          # ==================================================
         # Rule 7
         # Contains Match
@@ -356,62 +360,78 @@ class Scorer:
 
                 )
 
+        # Strong deterministic/business matches do not need
+        # additional expensive fuzzy/semantic evaluation.
+        if best_score >= BUSINESS_MATCH_SCORE:
+
+            return self._result(
+
+                best_score,
+
+                best_method,
+
+                best_reason
+
+            )
+
         # ==================================================
         # Rule 12
         # Fuzzy Match
         # ==================================================
 
-        source_fp = business_fingerprint(source_field)
+        if expanded_overlap:
 
-        target_fp = business_fingerprint(target_field)
+            source_fp = business_fingerprint(source_field)
 
-        fuzzy_score = max(
+            target_fp = business_fingerprint(target_field)
 
-            fuzz.ratio(
+            fuzzy_score = max(
 
-                source_fp,
+                fuzz.ratio(
 
-                target_fp
+                    source_fp,
 
-            ),
+                    target_fp
 
-            fuzz.partial_ratio(
+                ),
 
-                source_fp,
+                fuzz.partial_ratio(
 
-                target_fp
+                    source_fp,
 
-            ),
+                    target_fp
 
-            fuzz.token_sort_ratio(
+                ),
 
-                source_fp,
+                fuzz.token_sort_ratio(
 
-                target_fp
+                    source_fp,
 
-            ),
+                    target_fp
 
-            fuzz.token_set_ratio(
+                ),
 
-                source_fp,
+                fuzz.token_set_ratio(
 
-                target_fp
+                    source_fp,
 
-            )
+                    target_fp
 
-        )
-
-        if fuzzy_score >= FUZZY_MATCH_THRESHOLD:
-
-            update(
-
-                round(fuzzy_score),
-
-                "Fuzzy",
-
-                "Fuzzy similarity"
+                )
 
             )
+
+            if fuzzy_score >= FUZZY_MATCH_THRESHOLD:
+
+                update(
+
+                    round(fuzzy_score),
+
+                    "Fuzzy",
+
+                    "Fuzzy similarity"
+
+                )
             
          # ==================================================
         # Rule 13
