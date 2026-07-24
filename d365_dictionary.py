@@ -46,9 +46,9 @@ D365_DICTIONARY = {
 
     "org": "organization",
     "organization": "organization",
-    "company": "organization",
-    "legalentity": "organization",
-    "dataareaid": "organization",
+    "company": "company",
+    "legalentity": "company",
+    "dataareaid": "company",
 
     # -------------------------------------------------
     # Party

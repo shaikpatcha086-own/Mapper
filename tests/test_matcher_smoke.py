@@ -62,6 +62,39 @@ class TestMatcherSmoke(unittest.TestCase):
         self.assertIsNotNone(result2)
         self.assertNotEqual(result1.get("source_id"), result2.get("source_id"))
 
+    def test_org_prefers_organization_not_company(self):
+        matcher = Matcher()
+
+        source_metadata = [
+            {"field": "Org", "description": "Organization"},
+        ]
+
+        organization_target = {
+            "row": 1,
+            "field": "Organization",
+            "description": "Organization",
+        }
+
+        company_target = {
+            "row": 2,
+            "field": "Company",
+            "description": "Legal entity company",
+        }
+
+        organization_result = matcher.match_target(
+            organization_target,
+            source_metadata
+        )
+
+        company_result = matcher.match_target(
+            company_target,
+            source_metadata
+        )
+
+        self.assertIsNotNone(organization_result)
+        self.assertEqual(organization_result["source_field"], "Org")
+        self.assertIsNone(company_result)
+
 
 if __name__ == "__main__":
     unittest.main()

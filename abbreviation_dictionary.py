@@ -75,7 +75,7 @@ ABBREVIATIONS = {
     "org": "organization",
     "organisation": "organization",
     "organization": "organization",
-    "company": "organization",
+    "company": "company",
 
     # ------------------------------------------------------
     # Party

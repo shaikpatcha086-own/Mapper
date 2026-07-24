@@ -53,8 +53,16 @@ BUSINESS_DICTIONARY = {
 
     "organization": [
         "org",
-        "company",
-        "legal entity"
+        "organisation"
+    ],
+
+    # -----------------------------------------------------
+    # Company
+    # -----------------------------------------------------
+
+    "company": [
+        "legal entity",
+        "dataareaid"
     ],
 
     # -----------------------------------------------------
