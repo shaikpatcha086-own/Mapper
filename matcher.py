@@ -8,7 +8,8 @@ D365 Metadata Mapper V3
 from scorer import Scorer
 from rules import violates_business_rule
 from ranking import RankingEngine
-from normalizer import fingerprint_tokens
+from normalizer import tokenize
+from business_dictionary import expand_tokens
 from config import (
     MIN_CONFIDENCE_SCORE,
     REVIEW_HEURISTIC_MIN_CONFIDENCE,
@@ -41,8 +42,8 @@ class Matcher:
 
     def _has_domain_overlap(self, source_field, target_field):
 
-        source_tokens = set(fingerprint_tokens(source_field))
-        target_tokens = set(fingerprint_tokens(target_field))
+        source_tokens = set(expand_tokens(tokenize(source_field)))
+        target_tokens = set(expand_tokens(tokenize(target_field)))
 
         source_tokens -= GENERIC_MATCH_TOKENS
         target_tokens -= GENERIC_MATCH_TOKENS

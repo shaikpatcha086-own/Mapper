@@ -83,6 +83,12 @@ if source_files and target_file:
             use_container_width=True
         )
 
+        generate_ai_assistance = st.checkbox(
+            "Generate AI Assistance For NoMap (slower)",
+            value=False,
+            help="Enable this only when you need suggestion analysis for unmapped/review rows."
+        )
+
         if st.button("🚀 Generate Mapping"):
 
             with st.spinner("Matching metadata..."):
@@ -92,7 +98,7 @@ if source_files and target_file:
                 target_metadata = workbook.get_target_fields()
 
                 matcher = Matcher()
-                nomap_ai = NoMapAIAssistant(top_n=3)
+                nomap_ai = NoMapAIAssistant(top_n=3) if generate_ai_assistance else None
 
                 logger = AuditLogger()
                 nomap_assistance = []
@@ -206,56 +212,71 @@ if source_files and target_file:
                 # AI Assistance For NoMap
                 # -------------------------------------------------
 
-                remaining_sources = [
-                    x for x in source_metadata
-                    if source_status_map.get(
-                        x.get("source_id", x.get("field", "")),
-                        "NoMap"
-                    )
-                    != "Auto Accept"
-                ]
+                if generate_ai_assistance:
 
-                for source in remaining_sources:
-
-                    suggestions = nomap_ai.suggest_targets_for_unmapped_source(
-                        source,
-                        target_metadata
-                    )
-
-                    top = suggestions[0] if suggestions else None
-
-                    alternatives = ""
-                    possible_targets = []
-
-                    if suggestions:
-                        possible_targets = [
-                            f"{x['target_field']} ({x['confidence']})"
-                            for x in suggestions
-                        ]
-
-                        alternatives = " | ".join([
-                            f"{x['target_field']} ({x['confidence']})"
-                            for x in suggestions
-                        ])
-
-                    nomap_assistance.append({
-                        "Suggested Source": source.get("field", ""),
-                        "Source Description": source.get("description", ""),
-                        "Source Status": source_status_map.get(
-                            source.get("source_id", source.get("field", "")),
+                    remaining_sources = [
+                        x for x in source_metadata
+                        if source_status_map.get(
+                            x.get("source_id", x.get("field", "")),
                             "NoMap"
-                        ),
-                        "Mapped From": (
-                            source.get("source_entity", "")
-                            or source.get("source_sheet", "")
-                            or source.get("source_file", "")
-                        ),
-                        "Target Suggestion": top["target_field"] if top else "",
-                        "Confidence": top["confidence"] if top else 0,
-                        "Method": top["method"] if top else "",
-                        "Reason": top["reason"] if top else "No suggestion from AI",
-                        "Possible Targets": " | ".join(possible_targets),
-                        "Alternatives": alternatives
+                        )
+                        != "Auto Accept"
+                    ]
+
+                    for source in remaining_sources:
+
+                        suggestions = nomap_ai.suggest_targets_for_unmapped_source(
+                            source,
+                            target_metadata
+                        )
+
+                        top = suggestions[0] if suggestions else None
+
+                        alternatives = ""
+                        possible_targets = []
+
+                        if suggestions:
+                            possible_targets = [
+                                f"{x['target_field']} ({x['confidence']})"
+                                for x in suggestions
+                            ]
+
+                            alternatives = " | ".join([
+                                f"{x['target_field']} ({x['confidence']})"
+                                for x in suggestions
+                            ])
+
+                        nomap_assistance.append({
+                            "Suggested Source": source.get("field", ""),
+                            "Source Description": source.get("description", ""),
+                            "Source Status": source_status_map.get(
+                                source.get("source_id", source.get("field", "")),
+                                "NoMap"
+                            ),
+                            "Mapped From": (
+                                source.get("source_entity", "")
+                                or source.get("source_sheet", "")
+                                or source.get("source_file", "")
+                            ),
+                            "Target Suggestion": top["target_field"] if top else "",
+                            "Confidence": top["confidence"] if top else 0,
+                            "Method": top["method"] if top else "",
+                            "Reason": top["reason"] if top else "No suggestion from AI",
+                            "Possible Targets": " | ".join(possible_targets),
+                            "Alternatives": alternatives
+                        })
+                else:
+                    nomap_assistance.append({
+                        "Suggested Source": "",
+                        "Source Description": "",
+                        "Source Status": "",
+                        "Mapped From": "",
+                        "Target Suggestion": "",
+                        "Confidence": "",
+                        "Method": "",
+                        "Reason": "AI Assistance skipped to improve runtime. Enable the checkbox before mapping to include suggestions.",
+                        "Possible Targets": "",
+                        "Alternatives": ""
                     })
 
                 # Save audit report
@@ -282,6 +303,7 @@ if source_files and target_file:
                     "summary": logger.summary(),
                     "audit_df": logger.dataframe(),
                     "nomap_df": pd.DataFrame(nomap_assistance),
+                    "ai_assistance_enabled": generate_ai_assistance,
                     "mapped_workbook": output.getvalue(),
                     "audit_workbook": audit_output.getvalue(),
                 }
@@ -317,6 +339,11 @@ if source_files and target_file:
             )
 
             st.subheader("🤖 AI Assistance For NoMap")
+
+            if not result.get("ai_assistance_enabled", True):
+                st.info(
+                    "AI Assistance was skipped for faster mapping. Re-run with checkbox enabled if you need suggestions."
+                )
 
             st.dataframe(
                 result["nomap_df"],

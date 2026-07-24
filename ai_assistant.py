@@ -10,7 +10,8 @@ in the main deterministic mapping pass.
 
 from scorer import Scorer
 from rules import violates_business_rule
-from normalizer import fingerprint_tokens
+from normalizer import tokenize
+from business_dictionary import expand_tokens
 from config import (
     MIN_CONFIDENCE_SCORE,
     HEURISTIC_MIN_CONFIDENCE,
@@ -31,8 +32,8 @@ class NoMapAIAssistant:
 
     def _overlap_metrics(self, source_field, target_field):
 
-        source_tokens = set(fingerprint_tokens(source_field))
-        target_tokens = set(fingerprint_tokens(target_field))
+        source_tokens = set(expand_tokens(tokenize(source_field)))
+        target_tokens = set(expand_tokens(tokenize(target_field)))
 
         source_tokens -= GENERIC_MATCH_TOKENS
         target_tokens -= GENERIC_MATCH_TOKENS
