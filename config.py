@@ -78,6 +78,18 @@ GENERIC_MATCH_TOKENS = {
     "key"
 }
 
+HEURISTIC_GATE_TOKENS = GENERIC_MATCH_TOKENS.union({
+
+    "contact",
+    "party",
+    "person",
+    "group",
+    "name",
+    "status",
+    "posting"
+
+})
+
 # ---------------------------------------------------------
 # Supported Source Header Names
 # (Dynamic Detection)

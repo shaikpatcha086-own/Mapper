@@ -17,7 +17,7 @@ from config import (
     DETERMINISTIC_METHODS,
     HEURISTIC_METHODS,
     STRICT_OVERLAP_METHODS,
-    GENERIC_MATCH_TOKENS
+    HEURISTIC_GATE_TOKENS
 )
 
 
@@ -35,6 +35,10 @@ class Matcher:
 
         return set(expand_tokens(tokenize(value)))
 
+    def _meaningful_tokens(self, value):
+
+        return self._expanded_tokens(value) - HEURISTIC_GATE_TOKENS
+
     def _source_key(self, source):
 
         source_id = source.get("source_id", "")
@@ -46,13 +50,32 @@ class Matcher:
 
     def _has_domain_overlap(self, source_field, target_field):
 
-        source_tokens = set(expand_tokens(tokenize(source_field)))
-        target_tokens = set(expand_tokens(tokenize(target_field)))
-
-        source_tokens -= GENERIC_MATCH_TOKENS
-        target_tokens -= GENERIC_MATCH_TOKENS
+        source_tokens = self._meaningful_tokens(source_field)
+        target_tokens = self._meaningful_tokens(target_field)
 
         return len(source_tokens.intersection(target_tokens)) > 0
+
+    def _has_meaningful_overlap(self, source, target):
+
+        source_field_tokens = self._meaningful_tokens(source.get("field", ""))
+        target_field_tokens = self._meaningful_tokens(target.get("field", ""))
+
+        if source_field_tokens.intersection(target_field_tokens):
+            return True
+
+        source_desc_tokens = self._meaningful_tokens(source.get("description", ""))
+        target_desc_tokens = self._meaningful_tokens(target.get("description", ""))
+
+        if source_desc_tokens.intersection(target_desc_tokens):
+            return True
+
+        if source_field_tokens.intersection(target_desc_tokens):
+            return True
+
+        if source_desc_tokens.intersection(target_field_tokens):
+            return True
+
+        return False
 
     # -----------------------------------------------------
     # Match One Target
@@ -65,8 +88,6 @@ class Matcher:
     ):
 
         candidates = []
-
-        target_tokens = self._expanded_tokens(target["field"])
 
         for source in source_metadata:
 
@@ -83,11 +104,7 @@ class Matcher:
             ):
                 continue
 
-            source_tokens = self._expanded_tokens(source["field"])
-
-            # Cheap prefilter: skip obviously unrelated pairs
-            # before running the full scoring engine.
-            if not source_tokens.intersection(target_tokens):
+            if not self._has_meaningful_overlap(source, target):
                 continue
 
             result = self.scorer.score(

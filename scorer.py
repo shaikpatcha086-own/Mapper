@@ -45,11 +45,34 @@ from config import (
     SOURCE_DESCRIPTION_SCORE,
     TARGET_DESCRIPTION_SCORE,
     ABBREVIATION_MATCH_SCORE,
-    FUZZY_MATCH_THRESHOLD
+    FUZZY_MATCH_THRESHOLD,
+    HEURISTIC_GATE_TOKENS
 )
 
 
 class Scorer:
+
+    def _meaningful_overlap(self, source_field, target_field, source_description, target_description):
+
+        source_tokens = set(expand_tokens(tokenize(source_field))) - HEURISTIC_GATE_TOKENS
+        target_tokens = set(expand_tokens(tokenize(target_field))) - HEURISTIC_GATE_TOKENS
+
+        if source_tokens.intersection(target_tokens):
+            return True
+
+        source_desc_tokens = set(expand_tokens(tokenize(source_description))) - HEURISTIC_GATE_TOKENS
+        target_desc_tokens = set(expand_tokens(tokenize(target_description))) - HEURISTIC_GATE_TOKENS
+
+        if source_desc_tokens.intersection(target_desc_tokens):
+            return True
+
+        if source_tokens.intersection(target_desc_tokens):
+            return True
+
+        if source_desc_tokens.intersection(target_tokens):
+            return True
+
+        return False
 
     def score(
         self,
@@ -363,6 +386,34 @@ class Scorer:
         # Strong deterministic/business matches do not need
         # additional expensive fuzzy/semantic evaluation.
         if best_score >= BUSINESS_MATCH_SCORE:
+
+            return self._result(
+
+                best_score,
+
+                best_method,
+
+                best_reason
+
+            )
+
+        if not self._meaningful_overlap(
+            source_field,
+            target_field,
+            source_description,
+            target_description
+        ):
+            if best_score == 0:
+
+                return self._result(
+
+                    0,
+
+                    "NoMap",
+
+                    "No meaningful business overlap"
+
+                )
 
             return self._result(
 

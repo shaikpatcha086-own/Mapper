@@ -18,7 +18,7 @@ from config import (
     DETERMINISTIC_METHODS,
     HEURISTIC_METHODS,
     STRICT_OVERLAP_METHODS,
-    GENERIC_MATCH_TOKENS
+    HEURISTIC_GATE_TOKENS
 )
 
 
@@ -35,8 +35,8 @@ class NoMapAIAssistant:
         source_tokens = set(expand_tokens(tokenize(source_field)))
         target_tokens = set(expand_tokens(tokenize(target_field)))
 
-        source_tokens -= GENERIC_MATCH_TOKENS
-        target_tokens -= GENERIC_MATCH_TOKENS
+        source_tokens -= HEURISTIC_GATE_TOKENS
+        target_tokens -= HEURISTIC_GATE_TOKENS
 
         overlap = source_tokens.intersection(target_tokens)
 
