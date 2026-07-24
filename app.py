@@ -117,12 +117,14 @@ if source_files and target_file:
 
                         workbook.update_source_field(
                             target["row"],
-                            "NoMap"
+                            "NoMap",
+                            target.get("sheet_name")
                         )
 
                         workbook.update_mapping_origin(
                             target["row"],
-                            "NoMap"
+                            "NoMap",
+                            target.get("sheet_name")
                         )
 
                         logger.add({
@@ -132,6 +134,7 @@ if source_files and target_file:
                             "source_sheet": "",
                             "source_file": "",
                             "target_field": target["field"],
+                            "target_sheet": target.get("sheet_name", ""),
                             "target_description": target.get(
                                 "description", ""
                             ),
@@ -152,7 +155,8 @@ if source_files and target_file:
 
                     workbook.update_source_field(
                         target["row"],
-                        result["source_field"]
+                        result["source_field"],
+                        target.get("sheet_name")
                     )
 
                     mapped_from = (
@@ -163,7 +167,8 @@ if source_files and target_file:
 
                     workbook.update_mapping_origin(
                         target["row"],
-                        mapped_from
+                        mapped_from,
+                        target.get("sheet_name")
                     )
 
                     source_status_map[
@@ -172,6 +177,7 @@ if source_files and target_file:
 
                     logger.add({
                         **result,
+                        "target_sheet": target.get("sheet_name", ""),
                         "mapping_source": mapped_from,
                         "ai_suggested_source": "",
                         "ai_confidence": "",

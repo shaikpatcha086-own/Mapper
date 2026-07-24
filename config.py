@@ -142,6 +142,14 @@ TARGET_DESCRIPTION_HEADERS = [
 
 ]
 
+TARGET_DATATYPE_HEADERS = [
+
+    "data type",
+    "datatype",
+    "type"
+
+]
+
 TARGET_SOURCEFIELD_HEADERS = [
 
     "source_field",

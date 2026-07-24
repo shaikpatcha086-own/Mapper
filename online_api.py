@@ -82,6 +82,7 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
         if result is None:
             decisions.append(
                 {
+                    "target_sheet": target.get("sheet_name", ""),
                     "target_field": target["field"],
                     "target_description": target.get("description", ""),
                     "source_field": "NoMap",
@@ -105,6 +106,7 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
 
         decisions.append(
             {
+                "target_sheet": target.get("sheet_name", ""),
                 "target_field": result["target_field"],
                 "target_description": result.get("target_description", ""),
                 "source_field": result["source_field"],
@@ -243,8 +245,16 @@ def map_files(
         result = run_mapping(source_metadata, target_metadata)
 
         for target_row, decision in zip(target_metadata, result["decisions"]):
-            workbook.update_source_field(target_row["row"], decision["source_field"])
-            workbook.update_mapping_origin(target_row["row"], decision.get("mapping_source", ""))
+            workbook.update_source_field(
+                target_row["row"],
+                decision["source_field"],
+                target_row.get("sheet_name")
+            )
+            workbook.update_mapping_origin(
+                target_row["row"],
+                decision.get("mapping_source", ""),
+                target_row.get("sheet_name")
+            )
 
         mapped_output = BytesIO()
         workbook.save(mapped_output)

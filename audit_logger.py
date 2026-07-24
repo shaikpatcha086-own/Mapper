@@ -46,6 +46,9 @@ class AuditLogger:
             "Target Field":
                 result.get("target_field", ""),
 
+            "Target Sheet":
+                result.get("target_sheet", ""),
+
             "Target Description":
                 result.get("target_description", ""),
 
