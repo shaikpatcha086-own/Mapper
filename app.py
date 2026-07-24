@@ -1,6 +1,7 @@
 import streamlit as st
 from io import BytesIO
 import pandas as pd
+from time import perf_counter
 
 from excel_handler import SourceMetadataReader
 from workbook_handler import WorkbookHandler
@@ -57,6 +58,8 @@ if source_files and target_file:
 
     try:
 
+        source_load_start = perf_counter()
+
         source_metadata = []
         preview_frames = []
 
@@ -71,6 +74,8 @@ if source_files and target_file:
 
             if preview is not None and not preview.empty:
                 preview_frames.append(preview)
+
+        source_load_seconds = perf_counter() - source_load_start
 
         st.success(
             f"Loaded {len(source_metadata)} source fields from {len(source_files)} source file(s)."
@@ -93,9 +98,13 @@ if source_files and target_file:
 
             with st.spinner("Matching metadata..."):
 
+                target_scan_start = perf_counter()
+
                 workbook = WorkbookHandler(target_file)
 
                 target_metadata = workbook.get_target_fields()
+
+                target_scan_seconds = perf_counter() - target_scan_start
 
                 matcher = Matcher()
                 nomap_ai = NoMapAIAssistant(top_n=3) if generate_ai_assistance else None
@@ -107,6 +116,8 @@ if source_files and target_file:
                 mapped = 0
                 review = 0
                 nomap = 0
+
+                match_loop_start = perf_counter()
 
                 # -------------------------------------------------
                 # Match Target Fields
@@ -204,15 +215,23 @@ if source_files and target_file:
 
                         nomap += 1
 
+                match_loop_seconds = perf_counter() - match_loop_start
+
                 # Save mapped workbook
+                workbook_save_start = perf_counter()
                 output = BytesIO()
                 workbook.save(output)
+                workbook_save_seconds = perf_counter() - workbook_save_start
 
                 # -------------------------------------------------
                 # AI Assistance For NoMap
                 # -------------------------------------------------
 
+                ai_assistance_seconds = 0.0
+
                 if generate_ai_assistance:
+
+                    ai_assistance_start = perf_counter()
 
                     remaining_sources = [
                         x for x in source_metadata
@@ -265,6 +284,8 @@ if source_files and target_file:
                             "Possible Targets": " | ".join(possible_targets),
                             "Alternatives": alternatives
                         })
+
+                    ai_assistance_seconds = perf_counter() - ai_assistance_start
                 else:
                     nomap_assistance.append({
                         "Suggested Source": "",
@@ -280,6 +301,7 @@ if source_files and target_file:
                     })
 
                 # Save audit report
+                audit_save_start = perf_counter()
                 audit_output = BytesIO()
 
                 with pd.ExcelWriter(
@@ -299,11 +321,41 @@ if source_files and target_file:
                         index=False
                     )
 
+                audit_save_seconds = perf_counter() - audit_save_start
+
+                mapping_sheet_names = [
+                    x.get("sheet_name", "")
+                    for x in getattr(workbook, "mapping_sheets", [])
+                ]
+
+                diagnostics = {
+                    "source_rows": len(source_metadata),
+                    "target_rows": len(target_metadata),
+                    "mapping_tabs_detected": len(mapping_sheet_names),
+                    "mapping_tab_names": ", ".join(mapping_sheet_names),
+                    "source_load_seconds": round(source_load_seconds, 3),
+                    "target_scan_seconds": round(target_scan_seconds, 3),
+                    "matching_seconds": round(match_loop_seconds, 3),
+                    "workbook_save_seconds": round(workbook_save_seconds, 3),
+                    "ai_assistance_seconds": round(ai_assistance_seconds, 3),
+                    "audit_save_seconds": round(audit_save_seconds, 3),
+                    "total_pairs_considered": matcher.stats["sources_considered"],
+                    "pairs_scored": matcher.stats["pairs_scored"],
+                    "skipped_used_source": matcher.stats["sources_skipped_used"],
+                    "skipped_by_business_rule": matcher.stats["sources_skipped_rule"],
+                    "skipped_by_prefilter": matcher.stats["sources_skipped_prefilter"],
+                    "below_threshold": matcher.stats["candidates_below_threshold"],
+                    "heuristic_rejected": matcher.stats["heuristic_rejected"],
+                    "matches_returned": matcher.stats["matches_returned"],
+                    "nomap_returned": matcher.stats["nomap_returned"],
+                }
+
                 st.session_state.mapping_result = {
                     "summary": logger.summary(),
                     "audit_df": logger.dataframe(),
                     "nomap_df": pd.DataFrame(nomap_assistance),
                     "ai_assistance_enabled": generate_ai_assistance,
+                    "diagnostics": diagnostics,
                     "mapped_workbook": output.getvalue(),
                     "audit_workbook": audit_output.getvalue(),
                 }
@@ -349,6 +401,19 @@ if source_files and target_file:
                 result["nomap_df"],
                 use_container_width=True
             )
+
+            with st.expander("Performance Diagnostics"):
+                st.dataframe(
+                    pd.DataFrame([
+                        {
+                            "Metric": key,
+                            "Value": value,
+                        }
+                        for key, value in result.get("diagnostics", {}).items()
+                    ]),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
             # -------------------------------------------------
             # Download Buttons

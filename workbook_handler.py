@@ -179,25 +179,10 @@ class WorkbookHandler:
 
         candidates = []
 
-        template_sheet = None
-
         for sheet in self.workbook.worksheets:
-            if normalize(sheet.title) == "template":
-                template_sheet = sheet
-                break
-
-        if template_sheet is not None:
-            info = self._analyze_sheet(template_sheet)
-            if info is None:
-                raise Exception(
-                    "Template tab found but required mapping headers are missing."
-                )
-            candidates.append(info)
-        else:
-            for sheet in self.workbook.worksheets:
-                info = self._analyze_sheet(sheet)
-                if info is not None:
-                    candidates.append(info)
+            info = self._analyze_sheet(sheet)
+            if info is not None:
+                candidates.append(info)
 
         if not candidates:
             raise Exception(

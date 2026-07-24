@@ -31,6 +31,19 @@ class Matcher:
 
         self.used_source_fields = set()
 
+        self.stats = {
+            "targets_processed": 0,
+            "sources_considered": 0,
+            "sources_skipped_used": 0,
+            "sources_skipped_rule": 0,
+            "sources_skipped_prefilter": 0,
+            "pairs_scored": 0,
+            "candidates_below_threshold": 0,
+            "heuristic_rejected": 0,
+            "matches_returned": 0,
+            "nomap_returned": 0,
+        }
+
     def _expanded_tokens(self, value):
 
         return set(expand_tokens(tokenize(value)))
@@ -87,14 +100,19 @@ class Matcher:
         source_metadata
     ):
 
+        self.stats["targets_processed"] += 1
+
         candidates = []
 
         for source in source_metadata:
+
+            self.stats["sources_considered"] += 1
 
             source_key = self._source_key(source)
 
             # Prevent duplicate mapping
             if source_key in self.used_source_fields:
+                self.stats["sources_skipped_used"] += 1
                 continue
 
             # Business rule validation
@@ -102,10 +120,14 @@ class Matcher:
                 source["field"],
                 target["field"]
             ):
+                self.stats["sources_skipped_rule"] += 1
                 continue
 
             if not self._has_meaningful_overlap(source, target):
+                self.stats["sources_skipped_prefilter"] += 1
                 continue
+
+            self.stats["pairs_scored"] += 1
 
             result = self.scorer.score(
 
@@ -125,11 +147,13 @@ class Matcher:
 
             # Ignore NoMap candidates
             if result["confidence"] < MIN_CONFIDENCE_SCORE:
+                self.stats["candidates_below_threshold"] += 1
                 continue
 
             if result["method"] in HEURISTIC_METHODS:
 
                 if result["confidence"] < REVIEW_HEURISTIC_MIN_CONFIDENCE:
+                    self.stats["heuristic_rejected"] += 1
                     continue
 
                 if result["method"] in STRICT_OVERLAP_METHODS:
@@ -138,6 +162,7 @@ class Matcher:
                         source["field"],
                         target["field"]
                     ):
+                        self.stats["heuristic_rejected"] += 1
                         continue
 
             candidates.append({
@@ -173,6 +198,7 @@ class Matcher:
             })
 
         if not candidates:
+            self.stats["nomap_returned"] += 1
             return None
 
         # -------------------------------------------------
@@ -237,5 +263,7 @@ class Matcher:
             best["status"] = "Review"
 
         self.used_source_fields.add(best.get("source_id", best["source_field"]))
+
+        self.stats["matches_returned"] += 1
 
         return best
