@@ -4,22 +4,255 @@ NoMap AI Assistant
 D365 Metadata Mapper V3
 ===========================================================
 
-Provides suggestion candidates only for rows that ended as NoMap
-in the main deterministic mapping pass.
+Provides suggestion candidates for rows that ended as NoMap
+in the main mapping pass.
 """
+
+import json
+import os
+import re
+from urllib import error, request
 
 from scorer import Scorer
 from rules import violates_business_rule
 from normalizer import tokenize
 from business_dictionary import expand_tokens
 from config import (
-    MIN_CONFIDENCE_SCORE,
     HEURISTIC_MIN_CONFIDENCE,
     DETERMINISTIC_METHODS,
     HEURISTIC_METHODS,
     STRICT_OVERLAP_METHODS,
-    HEURISTIC_GATE_TOKENS
+    HEURISTIC_GATE_TOKENS,
 )
+
+
+class LLMTargetReranker:
+    """
+    Optional LLM reranker for leftover source fields.
+
+    Uses Azure OpenAI when configured, or OpenAI-compatible endpoint.
+    If not configured or request fails, callers should fall back
+    to rule-based suggestions.
+    """
+
+    def __init__(self, top_n=3):
+
+        self.top_n = top_n
+
+        self.provider = os.getenv("LLM_PROVIDER", "azure").strip().lower()
+
+        self.azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip().rstrip("/")
+        self.azure_key = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
+        self.azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
+        self.azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21").strip()
+
+        self.openai_endpoint = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").strip().rstrip("/")
+        self.openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
+
+    def is_configured(self):
+
+        if self.provider == "azure":
+            return all([self.azure_endpoint, self.azure_key, self.azure_deployment])
+
+        return bool(self.openai_key)
+
+    def rerank_targets(self, source, candidates):
+
+        if not self.is_configured() or not candidates:
+            return None
+
+        try:
+            prompt = self._build_prompt(source, candidates)
+            raw = self._invoke_llm(prompt)
+            parsed = self._parse_json(raw)
+            if not parsed:
+                return None
+
+            ranked = []
+            candidate_index = {x.get("target_field", ""): x for x in candidates}
+
+            for item in parsed.get("recommendations", [])[:self.top_n]:
+                target_field = str(item.get("target_field", "")).strip()
+                if target_field == "" or target_field not in candidate_index:
+                    continue
+
+                base = candidate_index[target_field]
+                confidence = item.get("confidence", base.get("confidence", 0))
+
+                try:
+                    confidence = int(confidence)
+                except Exception:
+                    confidence = base.get("confidence", 0)
+
+                reason = str(item.get("reason", "")).strip() or "LLM rerank suggestion"
+
+                ranked.append({
+                    "target_field": target_field,
+                    "target_description": base.get("target_description", ""),
+                    "confidence": max(0, min(100, confidence)),
+                    "method": "LLM Rerank",
+                    "reason": reason,
+                })
+
+            return ranked or None
+
+        except Exception:
+            return None
+
+    def _build_prompt(self, source, candidates):
+
+        source_field = source.get("field", "")
+        source_description = source.get("description", "")
+        source_context = (
+            source.get("source_entity", "")
+            or source.get("source_sheet", "")
+            or source.get("source_file", "")
+        )
+
+        trimmed_candidates = [
+            {
+                "target_field": x.get("target_field", ""),
+                "target_description": x.get("target_description", ""),
+                "rule_confidence": x.get("confidence", 0),
+                "rule_method": x.get("method", ""),
+                "rule_reason": x.get("reason", ""),
+            }
+            for x in candidates[:15]
+        ]
+
+        payload = {
+            "source": {
+                "field": source_field,
+                "description": source_description,
+                "context": source_context,
+            },
+            "candidate_targets": trimmed_candidates,
+            "instructions": {
+                "goal": "Pick best target field matches for leftover source field.",
+                "constraints": [
+                    "Return max 3 recommendations.",
+                    "Do not invent new target fields.",
+                    "Prefer business meaning over token similarity.",
+                    "Return confidence 0-100 and concise reason.",
+                ],
+            },
+            "output_schema": {
+                "recommendations": [
+                    {
+                        "target_field": "string",
+                        "confidence": 0,
+                        "reason": "string",
+                    }
+                ]
+            },
+        }
+
+        return json.dumps(payload, ensure_ascii=True)
+
+    def _invoke_llm(self, prompt):
+
+        if self.provider == "azure":
+            return self._invoke_azure(prompt)
+
+        return self._invoke_openai(prompt)
+
+    def _invoke_azure(self, prompt):
+
+        url = (
+            f"{self.azure_endpoint}/openai/deployments/{self.azure_deployment}"
+            f"/chat/completions?api-version={self.azure_api_version}"
+        )
+
+        body = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a strict metadata mapping assistant. Reply with valid JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            "temperature": 0,
+            "max_tokens": 600,
+        }
+
+        req = request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "api-key": self.azure_key,
+            },
+        )
+
+        try:
+            with request.urlopen(req, timeout=20) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+                return payload["choices"][0]["message"]["content"]
+        except error.URLError:
+            return ""
+
+    def _invoke_openai(self, prompt):
+
+        url = f"{self.openai_endpoint}/chat/completions"
+
+        body = {
+            "model": self.openai_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a strict metadata mapping assistant. Reply with valid JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            "temperature": 0,
+            "max_tokens": 600,
+        }
+
+        req = request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.openai_key}",
+            },
+        )
+
+        try:
+            with request.urlopen(req, timeout=20) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+                return payload["choices"][0]["message"]["content"]
+        except error.URLError:
+            return ""
+
+    def _parse_json(self, raw):
+
+        if not raw:
+            return None
+
+        text = raw.strip()
+
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+
+        match = re.search(r"\{[\s\S]*\}", text)
+        if not match:
+            return None
+
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            return None
 
 
 class NoMapAIAssistant:
@@ -27,7 +260,6 @@ class NoMapAIAssistant:
     def __init__(self, top_n=3):
 
         self.top_n = top_n
-
         self.scorer = Scorer()
 
     def _overlap_metrics(self, source_field, target_field):
@@ -46,12 +278,10 @@ class NoMapAIAssistant:
         self,
         target,
         source_metadata,
-        exclude_sources=None
+        exclude_sources=None,
     ):
         """
         Return top candidate suggestions for a target field.
-
-        This method is designed for post-processing NoMap rows.
         """
 
         if not target or not source_metadata:
@@ -83,7 +313,7 @@ class NoMapAIAssistant:
                 source_field=source_field,
                 source_description=source_description,
                 target_field=target_field,
-                target_description=target_description
+                target_description=target_description,
             )
 
             if result["confidence"] < 60:
@@ -91,7 +321,7 @@ class NoMapAIAssistant:
 
             overlap_count, target_token_count = self._overlap_metrics(
                 source_field,
-                target_field
+                target_field,
             )
 
             method = result["method"]
@@ -99,7 +329,6 @@ class NoMapAIAssistant:
             if method in HEURISTIC_METHODS:
 
                 if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
-                    # Keep weaker heuristic hits as fallback only.
                     fallback_candidates.append({
                         "source_field": source_field,
                         "source_description": source_description,
@@ -107,14 +336,13 @@ class NoMapAIAssistant:
                         "method": method,
                         "reason": result["reason"],
                         "overlap_count": overlap_count,
-                        "deterministic": False
+                        "deterministic": False,
                     })
                     continue
 
                 if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
                     continue
 
-                # Prevent broad fuzzy suggestions for highly specific targets.
                 if (
                     method == "Fuzzy"
                     and target_token_count > 1
@@ -127,7 +355,7 @@ class NoMapAIAssistant:
                         "method": method,
                         "reason": result["reason"],
                         "overlap_count": overlap_count,
-                        "deterministic": False
+                        "deterministic": False,
                     })
                     continue
 
@@ -141,41 +369,37 @@ class NoMapAIAssistant:
                 "method": method,
                 "reason": result["reason"],
                 "overlap_count": overlap_count,
-                "deterministic": method in DETERMINISTIC_METHODS
+                "deterministic": method in DETERMINISTIC_METHODS,
             })
 
         strict_candidates.sort(
             key=lambda x: (
                 x["deterministic"],
                 x["confidence"],
-                x["overlap_count"]
+                x["overlap_count"],
             ),
-            reverse=True
+            reverse=True,
         )
 
         fallback_candidates.sort(
             key=lambda x: (
                 x["confidence"],
-                x["overlap_count"]
+                x["overlap_count"],
             ),
-            reverse=True
+            reverse=True,
         )
 
-        candidates = strict_candidates
-
-        if not candidates:
-            candidates = fallback_candidates
+        candidates = strict_candidates or fallback_candidates
 
         output = []
 
         for c in candidates[:self.top_n]:
-
             output.append({
                 "source_field": c["source_field"],
                 "source_description": c["source_description"],
                 "confidence": c["confidence"],
                 "method": c["method"],
-                "reason": c["reason"]
+                "reason": c["reason"],
             })
 
         return output
@@ -184,7 +408,8 @@ class NoMapAIAssistant:
         self,
         source,
         target_metadata,
-        exclude_targets=None
+        exclude_targets=None,
+        llm_reranker=None,
     ):
         """
         Return top target suggestions for a source field that remained unused.
@@ -222,7 +447,7 @@ class NoMapAIAssistant:
                 source_field=source_field,
                 source_description=source_description,
                 target_field=target_field,
-                target_description=target_description
+                target_description=target_description,
             )
 
             if result["confidence"] < 60:
@@ -230,7 +455,7 @@ class NoMapAIAssistant:
 
             overlap_count, target_token_count = self._overlap_metrics(
                 source_field,
-                target_field
+                target_field,
             )
 
             method = result["method"]
@@ -245,7 +470,7 @@ class NoMapAIAssistant:
                         "method": method,
                         "reason": result["reason"],
                         "overlap_count": overlap_count,
-                        "deterministic": False
+                        "deterministic": False,
                     })
                     continue
 
@@ -264,7 +489,7 @@ class NoMapAIAssistant:
                         "method": method,
                         "reason": result["reason"],
                         "overlap_count": overlap_count,
-                        "deterministic": False
+                        "deterministic": False,
                     })
                     continue
 
@@ -278,30 +503,27 @@ class NoMapAIAssistant:
                 "method": method,
                 "reason": result["reason"],
                 "overlap_count": overlap_count,
-                "deterministic": method in DETERMINISTIC_METHODS
+                "deterministic": method in DETERMINISTIC_METHODS,
             })
 
         strict_candidates.sort(
             key=lambda x: (
                 x["deterministic"],
                 x["confidence"],
-                x["overlap_count"]
+                x["overlap_count"],
             ),
-            reverse=True
+            reverse=True,
         )
 
         fallback_candidates.sort(
             key=lambda x: (
                 x["confidence"],
-                x["overlap_count"]
+                x["overlap_count"],
             ),
-            reverse=True
+            reverse=True,
         )
 
-        candidates = strict_candidates
-
-        if not candidates:
-            candidates = fallback_candidates
+        candidates = strict_candidates or fallback_candidates
 
         output = []
 
@@ -311,7 +533,12 @@ class NoMapAIAssistant:
                 "target_description": c["target_description"],
                 "confidence": c["confidence"],
                 "method": c["method"],
-                "reason": c["reason"]
+                "reason": c["reason"],
             })
+
+        if llm_reranker and output:
+            reranked = llm_reranker.rerank_targets(source, output)
+            if reranked:
+                return reranked
 
         return output

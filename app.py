@@ -7,7 +7,7 @@ from excel_handler import SourceMetadataReader
 from workbook_handler import WorkbookHandler
 from matcher import Matcher
 from audit_logger import AuditLogger
-from ai_assistant import NoMapAIAssistant
+from ai_assistant import NoMapAIAssistant, LLMTargetReranker
 
 # ---------------------------------------------------------
 # Page Configuration
@@ -94,6 +94,12 @@ if source_files and target_file:
             help="Enable this only when you need suggestion analysis for unmapped/review rows."
         )
 
+        use_llm_rerank = st.checkbox(
+            "Use LLM to rerank leftover suggestions (requires API config)",
+            value=False,
+            help="Uses Azure OpenAI/OpenAI API when configured; falls back silently if unavailable."
+        )
+
         if st.button("🚀 Generate Mapping"):
 
             with st.spinner("Matching metadata..."):
@@ -108,6 +114,7 @@ if source_files and target_file:
 
                 matcher = Matcher()
                 nomap_ai = NoMapAIAssistant(top_n=3) if generate_ai_assistance else None
+                llm_reranker = LLMTargetReranker(top_n=3) if (generate_ai_assistance and use_llm_rerank) else None
 
                 logger = AuditLogger()
                 nomap_assistance = []
@@ -228,6 +235,7 @@ if source_files and target_file:
                 # -------------------------------------------------
 
                 ai_assistance_seconds = 0.0
+                llm_rerank_seconds = 0.0
 
                 if generate_ai_assistance:
 
@@ -244,10 +252,15 @@ if source_files and target_file:
 
                     for source in remaining_sources:
 
+                        llm_start = perf_counter()
+
                         suggestions = nomap_ai.suggest_targets_for_unmapped_source(
                             source,
-                            target_metadata
+                            target_metadata,
+                            llm_reranker=llm_reranker
                         )
+
+                        llm_rerank_seconds += (perf_counter() - llm_start)
 
                         top = suggestions[0] if suggestions else None
 
@@ -338,6 +351,9 @@ if source_files and target_file:
                     "matching_seconds": round(match_loop_seconds, 3),
                     "workbook_save_seconds": round(workbook_save_seconds, 3),
                     "ai_assistance_seconds": round(ai_assistance_seconds, 3),
+                    "llm_rerank_seconds": round(llm_rerank_seconds, 3),
+                    "llm_rerank_enabled": bool(use_llm_rerank),
+                    "llm_configured": bool(llm_reranker.is_configured()) if llm_reranker else False,
                     "audit_save_seconds": round(audit_save_seconds, 3),
                     "total_pairs_considered": matcher.stats["sources_considered"],
                     "pairs_scored": matcher.stats["pairs_scored"],
