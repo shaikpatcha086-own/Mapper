@@ -5,6 +5,8 @@ D365 Metadata Mapper V3
 ===========================================================
 """
 
+from functools import lru_cache
+
 from scorer import Scorer
 from rules import violates_business_rule
 from ranking import RankingEngine
@@ -46,7 +48,7 @@ class Matcher:
 
     def _expanded_tokens(self, value):
 
-        return set(expand_tokens(tokenize(value)))
+        return set(_cached_expand_tokens(value))
 
     def _meaningful_tokens(self, value):
 
@@ -267,3 +269,9 @@ class Matcher:
         self.stats["matches_returned"] += 1
 
         return best
+
+
+@lru_cache(maxsize=8192)
+def _cached_expand_tokens(value):
+
+    return tuple(expand_tokens(tokenize(value)))

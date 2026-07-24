@@ -14,6 +14,8 @@ This prevents early rules from hiding better semantic
 matches.
 """
 
+from functools import lru_cache
+
 from rapidfuzz import fuzz
 
 from semantic_matcher import semantic_score
@@ -51,18 +53,78 @@ from config import (
 )
 
 
+@lru_cache(maxsize=8192)
+def _cached_normalize(value):
+
+    return normalize(value)
+
+
+@lru_cache(maxsize=8192)
+def _cached_tokenize(value):
+
+    return tuple(tokenize(value))
+
+
+@lru_cache(maxsize=8192)
+def _cached_expand_tokens(value):
+
+    return tuple(expand_tokens(_cached_tokenize(value)))
+
+
+@lru_cache(maxsize=8192)
+def _cached_acronym(value):
+
+    return acronym(value)
+
+
+@lru_cache(maxsize=8192)
+def _cached_business_fingerprint(value):
+
+    return business_fingerprint(value)
+
+
+@lru_cache(maxsize=8192)
+def _cached_fingerprint_tokens(value):
+
+    return tuple(fingerprint_tokens(value))
+
+
+@lru_cache(maxsize=8192)
+def _cached_business_concept(value):
+
+    return get_business_concept(value)
+
+
+@lru_cache(maxsize=16384)
+def _cached_contains(value1, value2):
+
+    return contains(value1, value2)
+
+
+@lru_cache(maxsize=16384)
+def _cached_alias_match(source_field, target_field):
+
+    return is_alias_match(source_field, target_field)
+
+
+@lru_cache(maxsize=16384)
+def _cached_semantic_score(source_field, target_field):
+
+    return semantic_score(source_field, target_field)
+
+
 class Scorer:
 
     def _meaningful_overlap(self, source_field, target_field, source_description, target_description):
 
-        source_tokens = set(expand_tokens(tokenize(source_field))) - HEURISTIC_GATE_TOKENS
-        target_tokens = set(expand_tokens(tokenize(target_field))) - HEURISTIC_GATE_TOKENS
+        source_tokens = set(_cached_expand_tokens(source_field)) - HEURISTIC_GATE_TOKENS
+        target_tokens = set(_cached_expand_tokens(target_field)) - HEURISTIC_GATE_TOKENS
 
         if source_tokens.intersection(target_tokens):
             return True
 
-        source_desc_tokens = set(expand_tokens(tokenize(source_description))) - HEURISTIC_GATE_TOKENS
-        target_desc_tokens = set(expand_tokens(tokenize(target_description))) - HEURISTIC_GATE_TOKENS
+        source_desc_tokens = set(_cached_expand_tokens(source_description)) - HEURISTIC_GATE_TOKENS
+        target_desc_tokens = set(_cached_expand_tokens(target_description)) - HEURISTIC_GATE_TOKENS
 
         if source_desc_tokens.intersection(target_desc_tokens):
             return True
@@ -93,7 +155,7 @@ class Scorer:
         # Enterprise Alias Match
         # ==================================================
 
-        if is_alias_match(source_field, target_field):
+        if _cached_alias_match(source_field, target_field):
 
             return self._result(
                 100,
@@ -140,7 +202,7 @@ class Scorer:
         # Normalized Match
         # ==================================================
 
-        if normalize(source_field) == normalize(target_field):
+        if _cached_normalize(source_field) == _cached_normalize(target_field):
 
             update(
 
@@ -157,11 +219,11 @@ class Scorer:
         # D365 Business Dictionary
         # ==================================================
 
-        source_business = get_business_concept(source_field)
+        source_business = _cached_business_concept(source_field)
 
-        target_business = get_business_concept(target_field)
+        target_business = _cached_business_concept(target_field)
 
-        if normalize(source_business) == normalize(target_business):
+        if _cached_normalize(source_business) == _cached_normalize(target_business):
 
             update(
 
@@ -178,7 +240,7 @@ class Scorer:
         # Business Fingerprint
         # ==================================================
 
-        if business_fingerprint(source_field) == business_fingerprint(target_field):
+        if _cached_business_fingerprint(source_field) == _cached_business_fingerprint(target_field):
 
             update(
 
@@ -195,9 +257,9 @@ class Scorer:
         # Business Token Match
         # ==================================================
 
-        source_tokens = fingerprint_tokens(source_field)
+        source_tokens = _cached_fingerprint_tokens(source_field)
 
-        target_tokens = fingerprint_tokens(target_field)
+        target_tokens = _cached_fingerprint_tokens(target_field)
 
         business_score = token_similarity(
 
@@ -224,17 +286,9 @@ class Scorer:
         # Business Dictionary Synonyms
         # ==================================================
 
-        source_tokens = expand_tokens(
+        source_tokens = _cached_expand_tokens(source_field)
 
-            tokenize(source_field)
-
-        )
-
-        target_tokens = expand_tokens(
-
-            tokenize(target_field)
-
-        )
+        target_tokens = _cached_expand_tokens(target_field)
 
         synonym_score = token_similarity(
 
@@ -264,7 +318,7 @@ class Scorer:
         # Contains Match
         # ==================================================
 
-        if contains(source_field, target_field):
+        if _cached_contains(source_field, target_field):
 
             update(
 
@@ -283,9 +337,9 @@ class Scorer:
 
         token_score = token_similarity(
 
-            tokenize(source_field),
+            _cached_tokenize(source_field),
 
-            tokenize(target_field)
+            _cached_tokenize(target_field)
 
         )
 
@@ -306,11 +360,11 @@ class Scorer:
         # Acronym Match
         # ==================================================
 
-        source_tokens = tokenize(source_field)
-        target_tokens = tokenize(target_field)
+        source_tokens = _cached_tokenize(source_field)
+        target_tokens = _cached_tokenize(target_field)
 
-        source_acr = acronym(source_field)
-        target_acr = acronym(target_field)
+        source_acr = _cached_acronym(source_field)
+        target_acr = _cached_acronym(target_field)
 
         # Acronym matching is meaningful only when both names are
         # multi-token; otherwise single-token values collapse to one
@@ -339,7 +393,7 @@ class Scorer:
 
         if source_description:
 
-            if contains(
+            if _cached_contains(
 
                 source_description,
 
@@ -366,9 +420,9 @@ class Scorer:
 
             description_score = fuzz.token_set_ratio(
 
-                business_fingerprint(source_description),
+                _cached_business_fingerprint(source_description),
 
-                business_fingerprint(target_description)
+                _cached_business_fingerprint(target_description)
 
             )
 
@@ -445,9 +499,9 @@ class Scorer:
 
         if expanded_overlap:
 
-            source_fp = business_fingerprint(source_field)
+            source_fp = _cached_business_fingerprint(source_field)
 
-            target_fp = business_fingerprint(target_field)
+            target_fp = _cached_business_fingerprint(target_field)
 
             fuzzy_score = max(
 
@@ -502,7 +556,7 @@ class Scorer:
         # Semantic Match
         # ==================================================
 
-        semantic = semantic_score(
+        semantic = _cached_semantic_score(
 
             source_field,
 
