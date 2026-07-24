@@ -95,6 +95,32 @@ class TestMatcherSmoke(unittest.TestCase):
         self.assertEqual(organization_result["source_field"], "Org")
         self.assertIsNone(company_result)
 
+    def test_blocks_generic_number_false_positive_mappings(self):
+        matcher = Matcher()
+
+        source_metadata = [
+            {"field": "[No_]", "description": ""},
+            {"field": "[Phone No_]", "description": ""},
+        ]
+
+        target_org_number = {
+            "row": 1,
+            "field": "OrganizationNumber",
+            "description": "Organization number",
+        }
+
+        target_party_number = {
+            "row": 2,
+            "field": "PartyNumber",
+            "description": "Party ID",
+        }
+
+        result_org = matcher.match_target(target_org_number, source_metadata)
+        result_party = matcher.match_target(target_party_number, source_metadata)
+
+        self.assertIsNone(result_org)
+        self.assertIsNone(result_party)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,7 +46,8 @@ from config import (
     TARGET_DESCRIPTION_SCORE,
     ABBREVIATION_MATCH_SCORE,
     FUZZY_MATCH_THRESHOLD,
-    HEURISTIC_GATE_TOKENS
+    HEURISTIC_GATE_TOKENS,
+    DETERMINISTIC_METHODS
 )
 
 
@@ -415,13 +416,25 @@ class Scorer:
 
                 )
 
+            if best_method in DETERMINISTIC_METHODS:
+
+                return self._result(
+
+                    best_score,
+
+                    best_method,
+
+                    best_reason
+
+                )
+
             return self._result(
 
-                best_score,
+                0,
 
-                best_method,
+                "NoMap",
 
-                best_reason
+                "No meaningful business overlap"
 
             )
 

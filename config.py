@@ -86,7 +86,12 @@ HEURISTIC_GATE_TOKENS = GENERIC_MATCH_TOKENS.union({
     "group",
     "name",
     "status",
-    "posting"
+    "posting",
+    "no",
+    "num",
+    "nbr",
+    "identifier",
+    "entity"
 
 })
 
