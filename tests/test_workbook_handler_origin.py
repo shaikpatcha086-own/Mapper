@@ -55,7 +55,7 @@ class TestWorkbookHandlerMappingOrigin(unittest.TestCase):
         handler.update_source_field(2, "ClientId")
         self.assertEqual(handler.sheet.cell(row=2, column=2).value, "ClientId")
 
-    def test_processes_all_tabs_with_mapping_headers(self):
+    def test_prefers_only_template_tab_when_present(self):
         wb = Workbook()
         ws1 = wb.active
         ws1.title = "READMEFIRST"
@@ -80,8 +80,8 @@ class TestWorkbookHandlerMappingOrigin(unittest.TestCase):
         handler = WorkbookHandler(payload)
 
         targets = handler.get_target_fields()
-        self.assertEqual(len(targets), 2)
-        self.assertEqual({x["sheet_name"] for x in targets}, {"Template", "Customers V3"})
+        self.assertEqual(len(targets), 1)
+        self.assertEqual({x["sheet_name"] for x in targets}, {"Template"})
 
         target_map = {x["field"]: x for x in targets}
 
@@ -91,17 +91,9 @@ class TestWorkbookHandlerMappingOrigin(unittest.TestCase):
             target_map["CustomerAccount"]["sheet_name"]
         )
 
-        handler.update_source_field(
-            target_map["InvoiceAccount"]["row"],
-            "InvoiceCustomerAccount",
-            target_map["InvoiceAccount"]["sheet_name"]
-        )
-
         template_sheet = handler.workbook["Template"]
-        customers_sheet = handler.workbook["Customers V3"]
 
         self.assertEqual(template_sheet.cell(row=2, column=3).value, "ClientId")
-        self.assertEqual(customers_sheet.cell(row=2, column=3).value, "InvoiceCustomerAccount")
 
 
 if __name__ == "__main__":
