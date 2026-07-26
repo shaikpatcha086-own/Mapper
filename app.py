@@ -99,22 +99,16 @@ if source_files and target_file:
         )
 
         use_llm_rerank = False
-        llm_configured_ui = None
 
         if generate_ai_assistance:
-            use_llm_rerank = st.checkbox(
-                "Use LLM to rerank leftover suggestions (requires API config)",
-                value=False,
-                help="Uses Azure OpenAI/OpenAI API when configured; falls back silently if unavailable."
-            )
+            llm_available = LLMTargetReranker(top_n=3).is_configured()
 
-            if use_llm_rerank:
-                llm_configured_ui = LLMTargetReranker(top_n=3).is_configured()
-                if not llm_configured_ui:
-                    st.warning(
-                        "LLM rerank is enabled, but API configuration is missing. "
-                        "Suggestions will fall back to rule-based engine only."
-                    )
+            if llm_available:
+                use_llm_rerank = st.checkbox(
+                    "Use LLM to rerank leftover suggestions",
+                    value=False,
+                    help="Uses Azure OpenAI/OpenAI API when configured."
+                )
 
         if st.button("🚀 Generate Mapping"):
 
