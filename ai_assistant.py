@@ -274,6 +274,38 @@ class NoMapAIAssistant:
 
         return len(overlap), len(target_tokens)
 
+    def _meaningful_tokens(self, value):
+
+        return set(expand_tokens(tokenize(value))) - HEURISTIC_GATE_TOKENS
+
+    def _has_meaningful_overlap(
+        self,
+        source_field,
+        source_description,
+        target_field,
+        target_description,
+    ):
+
+        source_field_tokens = self._meaningful_tokens(source_field)
+        target_field_tokens = self._meaningful_tokens(target_field)
+
+        if source_field_tokens.intersection(target_field_tokens):
+            return True
+
+        source_desc_tokens = self._meaningful_tokens(source_description)
+        target_desc_tokens = self._meaningful_tokens(target_description)
+
+        if source_desc_tokens.intersection(target_desc_tokens):
+            return True
+
+        if source_field_tokens.intersection(target_desc_tokens):
+            return True
+
+        if source_desc_tokens.intersection(target_field_tokens):
+            return True
+
+        return False
+
     def suggest_for_nomap(
         self,
         target,
@@ -307,6 +339,14 @@ class NoMapAIAssistant:
                 continue
 
             if violates_business_rule(source_field, target_field):
+                continue
+
+            if not self._has_meaningful_overlap(
+                source_field,
+                source_description,
+                target_field,
+                target_description,
+            ):
                 continue
 
             result = self.scorer.score(
@@ -441,6 +481,14 @@ class NoMapAIAssistant:
                 continue
 
             if violates_business_rule(source_field, target_field):
+                continue
+
+            if not self._has_meaningful_overlap(
+                source_field,
+                source_description,
+                target_field,
+                target_description,
+            ):
                 continue
 
             result = self.scorer.score(

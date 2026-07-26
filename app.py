@@ -313,9 +313,13 @@ if source_files and target_file:
                                 or source.get("source_file", "")
                             ),
                             "Target Suggestion": top["target_field"] if top else "",
-                            "Confidence": top["confidence"] if top else 0,
+                            "Suggestion Confidence": top["confidence"] if top else 0,
                             "Method": top["method"] if top else "",
                             "Reason": top["reason"] if top else "No AI suggestion for this leftover source field",
+                            "Suggestion Note": (
+                                "Suggestion only for leftover source. "
+                                "Main mapping did not auto-map this source under strict rules."
+                            ),
                             "Possible Targets": " | ".join(possible_targets),
                             "Alternatives": alternatives
                         })
@@ -328,9 +332,10 @@ if source_files and target_file:
                         "Source Status": "",
                         "Mapped From": "",
                         "Target Suggestion": "",
-                        "Confidence": "",
+                        "Suggestion Confidence": "",
                         "Method": "",
                         "Reason": "AI Assistance skipped to improve runtime. Enable the checkbox before mapping to include suggestions.",
+                        "Suggestion Note": "",
                         "Possible Targets": "",
                         "Alternatives": ""
                     })
