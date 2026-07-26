@@ -133,6 +133,12 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
 
     used_sources = set(matcher.used_source_fields)
 
+    mapped_targets_high_conf = {
+        d.get("target_field", "")
+        for d in decisions
+        if d.get("confidence", 0) >= 85
+    }
+
     remaining_sources = [
         x for x in source_metadata
         if x.get("source_id", x.get("field", "")) not in used_sources
@@ -144,7 +150,8 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
 
         suggestions = nomap_ai.suggest_targets_for_unmapped_source(
             source,
-            target_metadata
+            target_metadata,
+            exclude_targets=mapped_targets_high_conf
         )
 
         top = suggestions[0] if suggestions else None

@@ -209,60 +209,10 @@ class Matcher:
 
         best = self.ranking.rank(candidates)
 
-        # -------------------------------------------------
-        # Ambiguity Detection
-        # -------------------------------------------------
-
-        if len(candidates) > 1:
-
-            second = sorted(
-                candidates,
-                key=lambda x: x["confidence"],
-                reverse=True
-            )[1]
-
-            if (
-                best["confidence"] < 100
-                and abs(
-                    best["confidence"]
-                    - second["confidence"]
-                ) <= 2
-            ):
-
-                best["status"] = "Review"
-
-                best["reason"] = (
-                    "Multiple high-confidence candidates"
-                )
-
-        if best["method"] in HEURISTIC_METHODS:
-
-            has_overlap = self._has_domain_overlap(
-                best["source_field"],
-                best["target_field"]
-            )
-
-            if (
-                has_overlap
-                and best["confidence"] >= AUTO_ACCEPT_HEURISTIC_MIN_CONFIDENCE
-            ):
-                best["status"] = "Auto Accept"
-
-                if best["reason"] == "Multiple high-confidence candidates":
-                    best["status"] = "Review"
-
-            else:
-
-                best["status"] = "Review"
-
-                if best["reason"] != "Multiple high-confidence candidates":
-                    best["reason"] = (
-                        "Heuristic method requires manual review"
-                    )
-
-        elif best["method"] not in DETERMINISTIC_METHODS:
-
-            best["status"] = "Review"
+        if best["confidence"] >= MIN_CONFIDENCE_SCORE:
+            best["status"] = "Auto Accept"
+        else:
+            best["status"] = "NoMap"
 
         self.used_source_fields.add(best.get("source_id", best["source_field"]))
 

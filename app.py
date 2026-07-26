@@ -89,16 +89,19 @@ if source_files and target_file:
         )
 
         generate_ai_assistance = st.checkbox(
-            "Generate AI Assistance For NoMap (slower)",
+            "Generate AI Suggestions for Leftover Source Fields (slower)",
             value=False,
-            help="Enable this only when you need suggestion analysis for unmapped/review rows."
+            help="Enable this only when you need target suggestions for leftover source fields (not final mapped targets)."
         )
 
-        use_llm_rerank = st.checkbox(
-            "Use LLM to rerank leftover suggestions (requires API config)",
-            value=False,
-            help="Uses Azure OpenAI/OpenAI API when configured; falls back silently if unavailable."
-        )
+        use_llm_rerank = False
+
+        if generate_ai_assistance:
+            use_llm_rerank = st.checkbox(
+                "Use LLM to rerank leftover suggestions (requires API config)",
+                value=False,
+                help="Uses Azure OpenAI/OpenAI API when configured; falls back silently if unavailable."
+            )
 
         if st.button("🚀 Generate Mapping"):
 
@@ -119,6 +122,8 @@ if source_files and target_file:
                 logger = AuditLogger()
                 nomap_assistance = []
                 source_status_map = {}
+                source_confidence_map = {}
+                mapped_targets_high_conf = set()
 
                 mapped = 0
                 review = 0
@@ -199,6 +204,13 @@ if source_files and target_file:
                         result.get("source_id", result["source_field"])
                     ] = result["status"]
 
+                    source_confidence_map[
+                        result.get("source_id", result["source_field"])
+                    ] = result.get("confidence", 0)
+
+                    if result.get("confidence", 0) >= 85:
+                        mapped_targets_high_conf.add(target.get("field", ""))
+
                     logger.add({
                         **result,
                         "target_sheet": target.get("sheet_name", ""),
@@ -243,11 +255,11 @@ if source_files and target_file:
 
                     remaining_sources = [
                         x for x in source_metadata
-                        if source_status_map.get(
+                        if source_confidence_map.get(
                             x.get("source_id", x.get("field", "")),
-                            "NoMap"
+                            0
                         )
-                        != "Auto Accept"
+                        < 85
                     ]
 
                     for source in remaining_sources:
@@ -257,6 +269,7 @@ if source_files and target_file:
                         suggestions = nomap_ai.suggest_targets_for_unmapped_source(
                             source,
                             target_metadata,
+                            exclude_targets=mapped_targets_high_conf,
                             llm_reranker=llm_reranker
                         )
 
@@ -293,7 +306,7 @@ if source_files and target_file:
                             "Target Suggestion": top["target_field"] if top else "",
                             "Confidence": top["confidence"] if top else 0,
                             "Method": top["method"] if top else "",
-                            "Reason": top["reason"] if top else "No suggestion from AI",
+                            "Reason": top["reason"] if top else "No AI suggestion for this leftover source field",
                             "Possible Targets": " | ".join(possible_targets),
                             "Alternatives": alternatives
                         })
@@ -330,7 +343,7 @@ if source_files and target_file:
 
                     pd.DataFrame(nomap_assistance).to_excel(
                         writer,
-                        sheet_name="AI Assistance For NoMap",
+                        sheet_name="AI Suggestions - Leftover Sources",
                         index=False
                     )
 
@@ -406,11 +419,11 @@ if source_files and target_file:
                 use_container_width=True
             )
 
-            st.subheader("🤖 AI Assistance For NoMap")
+            st.subheader("🤖 AI Suggestions For Leftover Source Fields")
 
             if not result.get("ai_assistance_enabled", True):
                 st.info(
-                    "AI Assistance was skipped for faster mapping. Re-run with checkbox enabled if you need suggestions."
+                    "AI suggestions were skipped for faster mapping. Re-run with checkbox enabled if you need leftover-source suggestions."
                 )
 
             st.dataframe(
