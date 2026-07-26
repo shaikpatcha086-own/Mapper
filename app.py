@@ -8,6 +8,10 @@ from workbook_handler import WorkbookHandler
 from matcher import Matcher
 from audit_logger import AuditLogger
 from ai_assistant import NoMapAIAssistant, LLMTargetReranker
+from config import (
+    AI_ASSISTANCE_MAX_SOURCES,
+    AI_ASSISTANCE_TIME_BUDGET_SECONDS,
+)
 
 # ---------------------------------------------------------
 # Page Configuration
@@ -257,6 +261,10 @@ if source_files and target_file:
 
                 ai_assistance_seconds = 0.0
                 llm_rerank_seconds = 0.0
+                ai_sources_total = 0
+                ai_sources_processed = 0
+                ai_truncated_by_source_limit = False
+                ai_truncated_by_time_budget = False
 
                 if generate_ai_assistance:
 
@@ -264,14 +272,29 @@ if source_files and target_file:
 
                     remaining_sources = [
                         x for x in source_metadata
-                        if source_confidence_map.get(
+                        if source_status_map.get(
                             x.get("source_id", x.get("field", "")),
-                            0
+                            "NoMap"
                         )
-                        < 85
+                        == "NoMap"
                     ]
 
+                    ai_sources_total = len(remaining_sources)
+
+                    if ai_sources_total > AI_ASSISTANCE_MAX_SOURCES:
+                        remaining_sources = remaining_sources[:AI_ASSISTANCE_MAX_SOURCES]
+                        ai_truncated_by_source_limit = True
+
                     for source in remaining_sources:
+
+                        if (
+                            perf_counter() - ai_assistance_start
+                            >= AI_ASSISTANCE_TIME_BUDGET_SECONDS
+                        ):
+                            ai_truncated_by_time_budget = True
+                            break
+
+                        ai_sources_processed += 1
 
                         llm_start = perf_counter()
 
@@ -318,6 +341,30 @@ if source_files and target_file:
                             "Reason": top["reason"] if top else "No AI suggestion for this leftover source field",
                             "Possible Targets": " | ".join(possible_targets),
                             "Alternatives": alternatives
+                        })
+
+                    if ai_truncated_by_source_limit or ai_truncated_by_time_budget:
+                        reason_parts = []
+                        if ai_truncated_by_source_limit:
+                            reason_parts.append(
+                                f"Limited to first {AI_ASSISTANCE_MAX_SOURCES} leftover sources"
+                            )
+                        if ai_truncated_by_time_budget:
+                            reason_parts.append(
+                                f"Stopped after {AI_ASSISTANCE_TIME_BUDGET_SECONDS} seconds"
+                            )
+
+                        nomap_assistance.append({
+                            "Suggested Source": "",
+                            "Source Description": "",
+                            "Source Status": "",
+                            "Mapped From": "",
+                            "Target Suggestion": "",
+                            "Confidence": "",
+                            "Method": "",
+                            "Reason": "AI suggestions were limited for performance: " + "; ".join(reason_parts),
+                            "Possible Targets": "",
+                            "Alternatives": ""
                         })
 
                     ai_assistance_seconds = perf_counter() - ai_assistance_start
@@ -376,6 +423,12 @@ if source_files and target_file:
                     "llm_rerank_seconds": round(llm_rerank_seconds, 3),
                     "llm_rerank_enabled": bool(use_llm_rerank),
                     "llm_configured": bool(llm_reranker.is_configured()) if llm_reranker else False,
+                    "ai_sources_total": ai_sources_total,
+                    "ai_sources_processed": ai_sources_processed,
+                    "ai_truncated_by_source_limit": ai_truncated_by_source_limit,
+                    "ai_truncated_by_time_budget": ai_truncated_by_time_budget,
+                    "ai_max_sources_limit": AI_ASSISTANCE_MAX_SOURCES,
+                    "ai_time_budget_seconds": AI_ASSISTANCE_TIME_BUDGET_SECONDS,
                     "audit_save_seconds": round(audit_save_seconds, 3),
                     "total_pairs_considered": matcher.stats["sources_considered"],
                     "pairs_scored": matcher.stats["pairs_scored"],

@@ -211,3 +211,13 @@ REMOVE_CHARACTERS = [
 ENABLE_LOGGING = True
 
 LOG_FOLDER = "logs"
+
+# ---------------------------------------------------------
+# AI Assistance Performance Guard
+# ---------------------------------------------------------
+
+# Limit how many leftover sources are evaluated for suggestions.
+AI_ASSISTANCE_MAX_SOURCES = 25
+
+# Stop AI suggestion pass after this many seconds.
+AI_ASSISTANCE_TIME_BUDGET_SECONDS = 8.0
