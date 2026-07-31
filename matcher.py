@@ -12,6 +12,7 @@ from rules import violates_business_rule
 from ranking import RankingEngine
 from normalizer import tokenize
 from business_dictionary import expand_tokens
+from enterprise_alias_dictionary import is_alias_match
 from config import (
     MIN_CONFIDENCE_SCORE,
     REVIEW_HEURISTIC_MIN_CONFIDENCE,
@@ -125,7 +126,15 @@ class Matcher:
                 self.stats["sources_skipped_rule"] += 1
                 continue
 
-            if not self._has_meaningful_overlap(source, target):
+            # Enterprise Alias is a deterministic 100-confidence rule.
+            # It must bypass the prefilter because alias tokens (e.g. "contact")
+            # may themselves be in HEURISTIC_GATE_TOKENS and would otherwise
+            # produce an empty meaningful-token set, silently dropping the pair.
+            is_enterprise_alias = _cached_alias_match(
+                source["field"], target["field"]
+            )
+
+            if not is_enterprise_alias and not self._has_meaningful_overlap(source, target):
                 self.stats["sources_skipped_prefilter"] += 1
                 continue
 
@@ -225,3 +234,9 @@ class Matcher:
 def _cached_expand_tokens(value):
 
     return tuple(expand_tokens(tokenize(value)))
+
+
+@lru_cache(maxsize=16384)
+def _cached_alias_match(source_field, target_field):
+
+    return is_alias_match(source_field, target_field)
