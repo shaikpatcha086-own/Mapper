@@ -229,7 +229,9 @@ LOG_FOLDER = "logs"
 # ---------------------------------------------------------
 
 # Limit how many leftover sources are evaluated for suggestions.
-AI_ASSISTANCE_MAX_SOURCES = 25
+# Increased to 500 to handle large datasets; direct fuzzy matching is fast.
+AI_ASSISTANCE_MAX_SOURCES = 500
 
 # Stop AI suggestion pass after this many seconds.
-AI_ASSISTANCE_TIME_BUDGET_SECONDS = 8.0
+# Increased to 120 seconds for comprehensive leftover coverage.
+AI_ASSISTANCE_TIME_BUDGET_SECONDS = 120.0
