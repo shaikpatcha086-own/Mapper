@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 from excel_handler import SourceMetadataReader
 from matcher import Matcher
 from workbook_handler import WorkbookHandler
-from ai_assistant import NoMapAIAssistant
 
 
 class MetadataItem(BaseModel):
@@ -73,7 +72,6 @@ def health():
 
 def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dict:
     matcher = Matcher()
-    nomap_ai = NoMapAIAssistant(top_n=3)
     decisions: list[dict] = []
 
     for target in target_metadata:
@@ -82,97 +80,30 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
         if result is None:
             decisions.append(
                 {
-                    "target_sheet": target.get("sheet_name", ""),
                     "target_field": target["field"],
                     "target_description": target.get("description", ""),
                     "source_field": "NoMap",
                     "source_description": "",
-                    "source_entity": "",
-                    "source_sheet": "",
-                    "source_file": "",
                     "confidence": 0,
                     "method": "No Match",
                     "status": "NoMap",
                     "reason": "No candidate above threshold",
-                    "mapping_source": "NoMap",
-                    "ai_suggested_source": "",
-                    "ai_confidence": "",
-                    "ai_method": "",
-                    "ai_reason": "",
-                    "ai_alternatives": "",
                 }
             )
             continue
 
         decisions.append(
             {
-                "target_sheet": target.get("sheet_name", ""),
                 "target_field": result["target_field"],
                 "target_description": result.get("target_description", ""),
                 "source_field": result["source_field"],
                 "source_description": result.get("source_description", ""),
-                "source_entity": result.get("source_entity", ""),
-                "source_sheet": result.get("source_sheet", ""),
-                "source_file": result.get("source_file", ""),
                 "confidence": result["confidence"],
                 "method": result["method"],
                 "status": result["status"],
                 "reason": result["reason"],
-                "mapping_source": (
-                    result.get("source_entity", "")
-                    or result.get("source_sheet", "")
-                    or result.get("source_file", "")
-                ),
-                "ai_suggested_source": "",
-                "ai_confidence": "",
-                "ai_method": "",
-                "ai_reason": "",
-                "ai_alternatives": "",
             }
         )
-
-    used_sources = set(matcher.used_source_fields)
-
-    mapped_targets_high_conf = {
-        d.get("target_field", "")
-        for d in decisions
-        if d.get("confidence", 0) >= 85
-    }
-
-    remaining_sources = [
-        x for x in source_metadata
-        if x.get("source_id", x.get("field", "")) not in used_sources
-    ]
-
-    unmapped_source_review: list[dict] = []
-
-    for source in remaining_sources:
-
-        suggestions = nomap_ai.suggest_targets_for_unmapped_source(
-            source,
-            target_metadata,
-            exclude_targets=mapped_targets_high_conf
-        )
-
-        top = suggestions[0] if suggestions else None
-
-        alternatives = ""
-
-        if suggestions:
-            alternatives = " | ".join([
-                f"{x['target_field']} ({x['confidence']})"
-                for x in suggestions
-            ])
-
-        unmapped_source_review.append({
-            "source_field": source.get("field", ""),
-            "source_description": source.get("description", ""),
-            "suggested_target": top["target_field"] if top else "",
-            "confidence": top["confidence"] if top else "",
-            "method": top["method"] if top else "",
-            "reason": top["reason"] if top else "",
-            "alternatives": alternatives,
-        })
 
     summary = {
         "Total": len(decisions),
@@ -181,11 +112,7 @@ def run_mapping(source_metadata: list[dict], target_metadata: list[dict]) -> dic
         "NoMap": sum(1 for d in decisions if d["status"] == "NoMap"),
     }
 
-    return {
-        "summary": summary,
-        "decisions": decisions,
-        "unmapped_source_review": unmapped_source_review,
-    }
+    return {"summary": summary, "decisions": decisions}
 
 
 @app.post("/map/fields")
@@ -212,38 +139,23 @@ def map_fields(payload: MapFieldsRequest):
 
 @app.post("/map/files")
 def map_files(
-    source_file: UploadFile | None = File(default=None),
-    source_files: list[UploadFile] | None = File(default=None),
+    source_file: UploadFile = File(...),
     target_file: UploadFile = File(...),
 ):
-    uploaded_sources: list[UploadFile] = []
-
-    if source_file is not None:
-        uploaded_sources.append(source_file)
-
-    if source_files:
-        uploaded_sources.extend(source_files)
-
-    if not uploaded_sources:
-        raise HTTPException(status_code=400, detail="At least one source file is required")
-
-    source_names = [((f.filename or "").lower()) for f in uploaded_sources]
+    source_name = (source_file.filename or "").lower()
     target_name = (target_file.filename or "").lower()
 
-    if not all(name.endswith((".xlsx", ".csv", ".txt")) for name in source_names):
-        raise HTTPException(status_code=400, detail="Each source file must be xlsx, csv, or txt")
+    if not source_name.endswith((".xlsx", ".csv", ".txt")):
+        raise HTTPException(status_code=400, detail="Source file must be xlsx, csv, or txt")
 
     if not target_name.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Target file must be xlsx")
 
     try:
-        source_metadata = []
-
-        for uploaded_source in uploaded_sources:
-            source_adapter = UploadedFileAdapter(uploaded_source)
-            source_reader = SourceMetadataReader(source_adapter)
-            source_reader.load()
-            source_metadata.extend(source_reader.get_metadata())
+        source_adapter = UploadedFileAdapter(source_file)
+        source_reader = SourceMetadataReader(source_adapter)
+        source_reader.load()
+        source_metadata = source_reader.get_metadata()
 
         target_file.file.seek(0)
         workbook = WorkbookHandler(target_file.file)
@@ -252,32 +164,13 @@ def map_files(
         result = run_mapping(source_metadata, target_metadata)
 
         for target_row, decision in zip(target_metadata, result["decisions"]):
-            workbook.update_source_field(
-                target_row["row"],
-                decision["source_field"],
-                target_row.get("sheet_name")
-            )
-            workbook.update_mapping_origin(
-                target_row["row"],
-                decision.get("mapping_source", ""),
-                target_row.get("sheet_name")
-            )
+            workbook.update_source_field(target_row["row"], decision["source_field"])
 
         mapped_output = BytesIO()
         workbook.save(mapped_output)
 
         audit_output = BytesIO()
-        with pd.ExcelWriter(audit_output, engine="openpyxl") as writer:
-            pd.DataFrame(result["decisions"]).to_excel(
-                writer,
-                index=False,
-                sheet_name="Target Mapping Audit"
-            )
-            pd.DataFrame(result.get("unmapped_source_review", [])).to_excel(
-                writer,
-                index=False,
-                sheet_name="Unmapped Source AI Review"
-            )
+        pd.DataFrame(result["decisions"]).to_excel(audit_output, index=False, engine="openpyxl")
 
         package_output = BytesIO()
         with zipfile.ZipFile(package_output, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:

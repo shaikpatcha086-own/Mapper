@@ -14,4 +14,3 @@ Inputs/
 *.xlsx
 *.csv
 *.txt
-!requirements.txt
