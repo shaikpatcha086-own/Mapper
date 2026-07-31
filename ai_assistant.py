@@ -432,14 +432,19 @@ class NoMapAIAssistant:
         source_description,
         target_metadata,
         excluded_targets,
-        fuzzy_threshold=55
+        fuzzy_threshold=60
     ):
         """
         For purely generic source fields, bypass the Python scorer entirely.
-        Use direct fuzzy matching against all targets.
-        This allows [Name] → OrganizationName, PersonName, etc. to be suggested.
+        Uses token_set_ratio (not partial_ratio) to avoid false substring matches.
+        e.g. partial_ratio("id", "PersonMiddleName") = 100 because "id" is inside "miDdlename"
+             token_set_ratio("id", "PersonMiddleName") = ~20 (correct — no real overlap)
         """
+        from normalizer import normalize
+
         suggestions = []
+
+        source_normalized = normalize(source_field)
 
         for target in target_metadata:
             target_field = target.get("field", "")
@@ -451,10 +456,12 @@ class NoMapAIAssistant:
             if violates_business_rule(source_field, target_field):
                 continue
 
-            # Direct fuzzy match without Python scorer
-            fuzzy_score = fuzz.partial_ratio(
-                source_field.lower(),
-                target_field.lower()
+            target_normalized = normalize(target_field)
+
+            # token_set_ratio compares token sets — immune to substring false positives
+            fuzzy_score = fuzz.token_set_ratio(
+                source_normalized,
+                target_normalized
             )
 
             if fuzzy_score >= fuzzy_threshold:
