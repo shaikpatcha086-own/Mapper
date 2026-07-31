@@ -128,6 +128,7 @@ if source_files and target_file:
 
                 logger = AuditLogger()
                 nomap_assistance = []
+                critical_nomap = []
                 source_status_map = {}
                 source_confidence_map = {}
                 mapped_targets_high_conf = set()
@@ -185,6 +186,15 @@ if source_files and target_file:
                             "ai_reason": "",
                             "ai_alternatives": ""
                         })
+
+                        if target.get("required") == "Y":
+                            critical_nomap.append({
+                                "D365 Field": target["field"],
+                                "Sheet": target.get("sheet_name", ""),
+                                "Description": target.get("description", ""),
+                                "Required / Fields to be Updated": "Y",
+                                "Action": "Mandatory field has no source mapping — client action required"
+                            })
 
                         nomap += 1
                         continue
@@ -397,6 +407,13 @@ if source_files and target_file:
                         index=False
                     )
 
+                    if critical_nomap:
+                        pd.DataFrame(critical_nomap).to_excel(
+                            writer,
+                            sheet_name="Critical NoMap - Action Required",
+                            index=False
+                        )
+
                 audit_save_seconds = perf_counter() - audit_save_start
 
                 mapping_sheet_names = [
@@ -439,6 +456,7 @@ if source_files and target_file:
                     "summary": logger.summary(),
                     "audit_df": logger.dataframe(),
                     "nomap_df": pd.DataFrame(nomap_assistance),
+                    "critical_nomap": critical_nomap,
                     "ai_assistance_enabled": generate_ai_assistance,
                     "diagnostics": diagnostics,
                     "mapped_workbook": output.getvalue(),
@@ -463,6 +481,27 @@ if source_files and target_file:
             c2.metric("Mapped", summary["Auto Accept"])
             c3.metric("Review", summary["Review"])
             c4.metric("NoMap", summary["NoMap"])
+
+            # -------------------------------------------------
+            # Critical NoMap Alert
+            # -------------------------------------------------
+
+            critical_nomap = result.get("critical_nomap", [])
+
+            if critical_nomap:
+                st.error(
+                    f"⚠️ **{len(critical_nomap)} Critical Field(s) Unmapped — Client Action Required**\n\n"
+                    "The following D365 fields are marked as **Required / Fields to be Updated = Y** "
+                    "but have **no source mapping (NoMap)**. These must be resolved before go-live."
+                )
+                st.dataframe(
+                    pd.DataFrame(critical_nomap),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                if summary["NoMap"] > 0:
+                    st.info("ℹ️ No critical unmapped fields detected (none of the NoMap fields were marked Required / Fields to be Updated = Y).")
 
             # -------------------------------------------------
             # Audit Report Preview

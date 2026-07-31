@@ -19,7 +19,8 @@ from config import (
     TARGET_DATATYPE_HEADERS,
     TARGET_SOURCEFIELD_HEADERS,
     TARGET_MAPPING_ORIGIN_HEADERS,
-    TARGET_MAPPING_ORIGIN_HEADER_NAME
+    TARGET_MAPPING_ORIGIN_HEADER_NAME,
+    TARGET_REQUIRED_HEADERS
 )
 
 from normalizer import normalize
@@ -109,6 +110,7 @@ class WorkbookHandler:
         description_col = None
         source_field_col = None
         mapping_origin_col = None
+        required_col = None
         has_datatype_header = False
 
         for cell in sheet[header_row]:
@@ -129,6 +131,9 @@ class WorkbookHandler:
 
             elif value in TARGET_MAPPING_ORIGIN_HEADERS:
                 mapping_origin_col = cell.column
+
+            elif value in TARGET_REQUIRED_HEADERS:
+                required_col = cell.column
 
             elif value in TARGET_DATATYPE_HEADERS:
                 has_datatype_header = True
@@ -159,6 +164,7 @@ class WorkbookHandler:
             "description_col": description_col,
             "source_field_col": source_field_col,
             "mapping_origin_col": mapping_origin_col,
+            "required_col": required_col,
             "signal_score": signal_score,
         }
 
@@ -258,6 +264,18 @@ class WorkbookHandler:
                     if value:
                         description = str(value).strip()
 
+                required = ""
+
+                if sheet_info.get("required_col"):
+
+                    req_value = sheet.cell(
+                        row=row,
+                        column=sheet_info["required_col"]
+                    ).value
+
+                    if req_value is not None:
+                        required = str(req_value).strip().upper()
+
                 metadata.append({
 
                     "row": row,
@@ -265,6 +283,8 @@ class WorkbookHandler:
                     "field": field,
 
                     "description": description,
+
+                    "required": required,
 
                     "sheet_name": sheet_info["sheet_name"]
 

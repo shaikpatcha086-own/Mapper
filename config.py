@@ -186,6 +186,18 @@ TARGET_MAPPING_ORIGIN_HEADERS = [
 
 TARGET_MAPPING_ORIGIN_HEADER_NAME = "Mapping Source"
 
+TARGET_REQUIRED_HEADERS = [
+
+    "fields to be updated",
+    "field to be updated",
+    "required",
+    "mandatory",
+    "is required",
+    "must map",
+    "migration required"
+
+]
+
 # ---------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------
