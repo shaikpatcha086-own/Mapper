@@ -274,6 +274,12 @@ class NoMapAIAssistant:
 
         return len(overlap), len(target_tokens)
 
+    def _is_generic_leftover_source(self, source_field):
+        """Check if source field contains ONLY gate tokens (couldn't match in main pass)."""
+        source_tokens = set(expand_tokens(tokenize(source_field)))
+        meaningful_tokens = source_tokens - HEURISTIC_GATE_TOKENS
+        return len(meaningful_tokens) == 0 and len(source_tokens) > 0
+
     def suggest_for_nomap(
         self,
         target,
@@ -325,6 +331,7 @@ class NoMapAIAssistant:
             )
 
             method = result["method"]
+            is_generic = self._is_generic_leftover_source(source_field)
 
             if method in HEURISTIC_METHODS:
 
@@ -340,11 +347,14 @@ class NoMapAIAssistant:
                     })
                     continue
 
-                if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
+                # For generic leftover sources (only gate tokens), bypass strict overlap
+                # because they inherently can't have meaningful token overlap
+                if not is_generic and method in STRICT_OVERLAP_METHODS and overlap_count == 0:
                     continue
 
                 if (
-                    method == "Fuzzy"
+                    not is_generic
+                    and method == "Fuzzy"
                     and target_token_count > 1
                     and overlap_count < 2
                 ):
@@ -359,7 +369,7 @@ class NoMapAIAssistant:
                     })
                     continue
 
-                if method == "Abbreviation" and overlap_count == 0:
+                if not is_generic and method == "Abbreviation" and overlap_count == 0:
                     continue
 
             strict_candidates.append({
@@ -404,6 +414,16 @@ class NoMapAIAssistant:
 
         return output
 
+    def _is_purely_generic(self, field):
+        """
+        Check if a field consists only of gate tokens (generic terms like 'name', 'id', 'no', etc.).
+        These fields need special handling because they have no meaningful semantic content.
+        """
+        tokens = set(tokenize(field)) - {""}
+        if not tokens:
+            return True
+        return tokens.issubset(HEURISTIC_GATE_TOKENS)
+
     def suggest_targets_for_unmapped_source(
         self,
         source,
@@ -413,6 +433,11 @@ class NoMapAIAssistant:
     ):
         """
         Return top target suggestions for a source field that remained unused.
+        
+        Special handling for purely generic source fields (e.g., [Name], [No_], [Phone No_]):
+        - Lower confidence threshold to 40 instead of 60
+        - Allow fuzzy and semantic matches even with zero token overlap
+        - Accept higher variance in scoring
         """
 
         if not source or not target_metadata:
@@ -425,6 +450,9 @@ class NoMapAIAssistant:
 
         if source_field == "":
             return []
+
+        is_generic = self._is_purely_generic(source_field)
+        min_confidence_threshold = 40 if is_generic else 60
 
         strict_candidates = []
         fallback_candidates = []
@@ -450,7 +478,7 @@ class NoMapAIAssistant:
                 target_description=target_description,
             )
 
-            if result["confidence"] < 60:
+            if result["confidence"] < min_confidence_threshold:
                 continue
 
             overlap_count, target_token_count = self._overlap_metrics(
@@ -474,27 +502,31 @@ class NoMapAIAssistant:
                     })
                     continue
 
-                if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
-                    continue
+                # For purely generic sources, relax the strict overlap constraints.
+                # E.g., [Name] (generic) should still match against fuzzy/semantic
+                # hits even with zero token overlap.
+                if not is_generic:
+                    if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
+                        continue
 
-                if (
-                    method == "Fuzzy"
-                    and target_token_count > 1
-                    and overlap_count < 2
-                ):
-                    fallback_candidates.append({
-                        "target_field": target_field,
-                        "target_description": target_description,
-                        "confidence": result["confidence"],
-                        "method": method,
-                        "reason": result["reason"],
-                        "overlap_count": overlap_count,
-                        "deterministic": False,
-                    })
-                    continue
+                    if (
+                        method == "Fuzzy"
+                        and target_token_count > 1
+                        and overlap_count < 2
+                    ):
+                        fallback_candidates.append({
+                            "target_field": target_field,
+                            "target_description": target_description,
+                            "confidence": result["confidence"],
+                            "method": method,
+                            "reason": result["reason"],
+                            "overlap_count": overlap_count,
+                            "deterministic": False,
+                        })
+                        continue
 
-                if method == "Abbreviation" and overlap_count == 0:
-                    continue
+                    if method == "Abbreviation" and overlap_count == 0:
+                        continue
 
             strict_candidates.append({
                 "target_field": target_field,
