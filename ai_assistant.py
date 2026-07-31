@@ -13,6 +13,8 @@ import os
 import re
 from urllib import error, request
 
+from rapidfuzz import fuzz
+
 from scorer import Scorer
 from rules import violates_business_rule
 from normalizer import tokenize
@@ -424,6 +426,55 @@ class NoMapAIAssistant:
             return True
         return tokens.issubset(HEURISTIC_GATE_TOKENS)
 
+    def _suggest_generic_fuzzy(
+        self,
+        source_field,
+        source_description,
+        target_metadata,
+        excluded_targets,
+        fuzzy_threshold=55
+    ):
+        """
+        For purely generic source fields, bypass the Python scorer entirely.
+        Use direct fuzzy matching against all targets.
+        This allows [Name] → OrganizationName, PersonName, etc. to be suggested.
+        """
+        suggestions = []
+
+        for target in target_metadata:
+            target_field = target.get("field", "")
+            target_description = target.get("description", "")
+
+            if target_field == "" or target_field in excluded_targets:
+                continue
+
+            if violates_business_rule(source_field, target_field):
+                continue
+
+            # Direct fuzzy match without Python scorer
+            fuzzy_score = fuzz.partial_ratio(
+                source_field.lower(),
+                target_field.lower()
+            )
+
+            if fuzzy_score >= fuzzy_threshold:
+                suggestions.append({
+                    "target_field": target_field,
+                    "target_description": target_description,
+                    "confidence": fuzzy_score,
+                    "method": "Fuzzy (Direct)",
+                    "reason": "Direct fuzzy match for generic source field",
+                    "overlap_count": 0,
+                    "deterministic": False,
+                })
+
+        suggestions.sort(
+            key=lambda x: x["confidence"],
+            reverse=True
+        )
+
+        return suggestions
+
     def suggest_targets_for_unmapped_source(
         self,
         source,
@@ -434,10 +485,13 @@ class NoMapAIAssistant:
         """
         Return top target suggestions for a source field that remained unused.
         
-        Special handling for purely generic source fields (e.g., [Name], [No_], [Phone No_]):
-        - Lower confidence threshold to 40 instead of 60
-        - Allow fuzzy and semantic matches even with zero token overlap
-        - Accept higher variance in scoring
+        For PURELY GENERIC fields (e.g., [Name], [No_], [Phone No_]):
+        - Bypass the Python scorer entirely
+        - Use direct fuzzy matching at 55% threshold
+        - Return highest fuzzy matches
+        
+        For all other fields:
+        - Use Python scorer with 60% confidence threshold
         """
 
         if not source or not target_metadata:
@@ -452,7 +506,36 @@ class NoMapAIAssistant:
             return []
 
         is_generic = self._is_purely_generic(source_field)
-        min_confidence_threshold = 40 if is_generic else 60
+
+        # For purely generic fields, skip Python scorer and use direct fuzzy matching
+        if is_generic:
+            candidates = self._suggest_generic_fuzzy(
+                source_field,
+                source_description,
+                target_metadata,
+                excluded,
+                fuzzy_threshold=55
+            )
+            
+            output = []
+            for c in candidates[:self.top_n]:
+                output.append({
+                    "target_field": c["target_field"],
+                    "target_description": c["target_description"],
+                    "confidence": c["confidence"],
+                    "method": c["method"],
+                    "reason": c["reason"],
+                })
+
+            if llm_reranker and output:
+                reranked = llm_reranker.rerank_targets(source, output)
+                if reranked:
+                    return reranked
+
+            return output
+
+        # ===== For NON-GENERIC fields, use Python scorer (original logic) =====
+        min_confidence_threshold = 60
 
         strict_candidates = []
         fallback_candidates = []
@@ -502,31 +585,27 @@ class NoMapAIAssistant:
                     })
                     continue
 
-                # For purely generic sources, relax the strict overlap constraints.
-                # E.g., [Name] (generic) should still match against fuzzy/semantic
-                # hits even with zero token overlap.
-                if not is_generic:
-                    if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
-                        continue
+                if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
+                    continue
 
-                    if (
-                        method == "Fuzzy"
-                        and target_token_count > 1
-                        and overlap_count < 2
-                    ):
-                        fallback_candidates.append({
-                            "target_field": target_field,
-                            "target_description": target_description,
-                            "confidence": result["confidence"],
-                            "method": method,
-                            "reason": result["reason"],
-                            "overlap_count": overlap_count,
-                            "deterministic": False,
-                        })
-                        continue
+                if (
+                    method == "Fuzzy"
+                    and target_token_count > 1
+                    and overlap_count < 2
+                ):
+                    fallback_candidates.append({
+                        "target_field": target_field,
+                        "target_description": target_description,
+                        "confidence": result["confidence"],
+                        "method": method,
+                        "reason": result["reason"],
+                        "overlap_count": overlap_count,
+                        "deterministic": False,
+                    })
+                    continue
 
-                    if method == "Abbreviation" and overlap_count == 0:
-                        continue
+                if method == "Abbreviation" and overlap_count == 0:
+                    continue
 
             strict_candidates.append({
                 "target_field": target_field,
