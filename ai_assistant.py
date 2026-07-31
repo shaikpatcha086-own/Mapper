@@ -514,7 +514,7 @@ class NoMapAIAssistant:
                 source_description,
                 target_metadata,
                 excluded,
-                fuzzy_threshold=55
+                fuzzy_threshold=60
             )
             
             output = []
@@ -535,7 +535,9 @@ class NoMapAIAssistant:
             return output
 
         # ===== For NON-GENERIC fields, use Python scorer (original logic) =====
-        min_confidence_threshold = 60
+        # Threshold of 80 filters out weak semantic cross-domain matches
+        # (e.g. [Last Statement No.] → PersonLastNamePrefix via 'last' token overlap)
+        min_confidence_threshold = 80
 
         strict_candidates = []
         fallback_candidates = []
