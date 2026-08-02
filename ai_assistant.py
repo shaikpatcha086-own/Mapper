@@ -19,7 +19,6 @@ from scorer import Scorer
 from rules import violates_business_rule
 from normalizer import tokenize
 from business_dictionary import expand_tokens
-from d365_module_catalogue import search_catalogue
 from config import (
     HEURISTIC_MIN_CONFIDENCE,
     DETERMINISTIC_METHODS,
@@ -656,31 +655,6 @@ class NoMapAIAssistant:
                 "method": c["method"],
                 "reason": c["reason"],
             })
-
-        # -------------------------------------------------
-        # D365 Module Catalogue Fallback
-        # If no suggestion found in the uploaded target workbook,
-        # search the built-in D365 F&O cross-module catalogue
-        # to suggest which module/entity may hold this field.
-        # -------------------------------------------------
-        if not output:
-            catalogue_hits = search_catalogue(
-                source_field=source_field,
-                source_description=source_description,
-                top_n=self.top_n,
-                threshold=60
-            )
-            for hit in catalogue_hits:
-                output.append({
-                    "target_field": f"{hit['d365_field']} ({hit['module']})",
-                    "target_description": hit["description"],
-                    "confidence": hit["score"],
-                    "method": "D365 Module Catalogue",
-                    "reason": (
-                        f"Not in target workbook — may exist in D365 "
-                        f"{hit['module']} → {hit['entity']} as '{hit['d365_field']}'"
-                    ),
-                })
 
         if llm_reranker and output:
             reranked = llm_reranker.rerank_targets(source, output)
