@@ -80,12 +80,8 @@ GENERIC_MATCH_TOKENS = {
 
 HEURISTIC_GATE_TOKENS = GENERIC_MATCH_TOKENS.union({
 
-    "contact",
-    "party",
-    "person",
     "group",
     "name",
-    "status",
     "posting",
     "no",
     "num",
