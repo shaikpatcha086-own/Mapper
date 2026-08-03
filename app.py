@@ -1,7 +1,14 @@
+import os
 import streamlit as st
 from io import BytesIO
 import pandas as pd
 from time import perf_counter
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from excel_handler import SourceMetadataReader
 from workbook_handler import WorkbookHandler
