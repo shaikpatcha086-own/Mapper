@@ -19,6 +19,9 @@ from scorer import Scorer
 from rules import violates_business_rule
 from normalizer import tokenize
 from business_dictionary import expand_tokens
+from semantic_matcher import SemanticMatcher
+from concept_engine import get_concepts
+from d365_dictionary import get_business_concept
 from config import (
     HEURISTIC_MIN_CONFIDENCE,
     DETERMINISTIC_METHODS,
@@ -491,14 +494,11 @@ class NoMapAIAssistant:
     ):
         """
         Return top target suggestions for a source field that remained unused.
-        
-        For PURELY GENERIC fields (e.g., [Name], [No_], [Phone No_]):
-        - Bypass the Python scorer entirely
-        - Use direct fuzzy matching at 55% threshold
-        - Return highest fuzzy matches
-        
-        For all other fields:
-        - Use Python scorer with 60% confidence threshold
+
+        Strategy (NO fuzzy matching — fuzzy already ran in main pass):
+        1. Expand source to D365 business concepts via ConceptEngine
+        2. Score all target fields by concept overlap (SemanticMatcher)
+        3. If LLM is configured, rerank the top candidates
         """
 
         if not source or not target_metadata:
@@ -512,150 +512,82 @@ class NoMapAIAssistant:
         if source_field == "":
             return []
 
-        is_generic = self._is_purely_generic(source_field)
+        # -------------------------------------------------------
+        # Step 1: Expand source to D365 business concepts
+        # -------------------------------------------------------
+        source_concepts = set(get_concepts(source_field) or [])
 
-        # For purely generic fields, skip Python scorer and use direct fuzzy matching
-        if is_generic:
-            candidates = self._suggest_generic_fuzzy(
-                source_field,
-                source_description,
-                target_metadata,
-                excluded,
-                fuzzy_threshold=60
-            )
-            
-            output = []
-            for c in candidates[:self.top_n]:
-                output.append({
-                    "target_field": c["target_field"],
-                    "target_description": c["target_description"],
-                    "confidence": c["confidence"],
-                    "method": c["method"],
-                    "reason": c["reason"],
-                })
+        # Also include concepts from description if available
+        if source_description:
+            source_concepts.update(get_concepts(source_description) or [])
 
-            if llm_reranker and output:
-                reranked = llm_reranker.rerank_targets(source, output)
-                if reranked:
-                    return reranked
+        # D365 dictionary expansion
+        d365_concept = get_business_concept(source_field)
+        if d365_concept:
+            source_concepts.update(tokenize(d365_concept))
 
-            return output
+        semantic = SemanticMatcher()
 
-        # ===== For NON-GENERIC fields, use Python scorer (original logic) =====
-        # Threshold of 80 filters out weak semantic cross-domain matches
-        # (e.g. [Last Statement No.] → PersonLastNamePrefix via 'last' token overlap)
-        min_confidence_threshold = 80
-
-        strict_candidates = []
-        fallback_candidates = []
+        # -------------------------------------------------------
+        # Step 2: Score all targets by concept overlap
+        # -------------------------------------------------------
+        candidates = []
 
         for target in target_metadata:
 
             target_field = target.get("field", "")
             target_description = target.get("description", "")
 
-            if target_field == "":
-                continue
-
-            if target_field in excluded:
+            if target_field == "" or target_field in excluded:
                 continue
 
             if violates_business_rule(source_field, target_field):
                 continue
 
-            result = self.scorer.score(
-                source_field=source_field,
-                source_description=source_description,
-                target_field=target_field,
-                target_description=target_description,
-            )
+            # Semantic concept score
+            concept_score = semantic.similarity(source_field, target_field)
 
-            if result["confidence"] < min_confidence_threshold:
+            # Weighted semantic score (boosts meaningful overlap)
+            weighted_score = semantic.weighted_similarity(source_field, target_field)
+
+            # Description-enhanced score: if target description shares concepts
+            desc_bonus = 0
+            if target_description and source_concepts:
+                target_desc_concepts = set(get_concepts(target_description) or [])
+                overlap = source_concepts.intersection(target_desc_concepts)
+                if overlap:
+                    desc_bonus = min(len(overlap) * 5, 20)
+
+            final_score = min(100, max(concept_score, weighted_score) + desc_bonus)
+
+            if final_score < 20:
                 continue
 
-            overlap_count, target_token_count = self._overlap_metrics(
-                source_field,
-                target_field,
+            matching = semantic.matching_concepts(source_field, target_field)
+            reason = (
+                f"D365 concept match: {', '.join(matching)}"
+                if matching
+                else "D365 semantic concept similarity"
             )
 
-            method = result["method"]
-
-            if method in HEURISTIC_METHODS:
-
-                if result["confidence"] < HEURISTIC_MIN_CONFIDENCE:
-                    fallback_candidates.append({
-                        "target_field": target_field,
-                        "target_description": target_description,
-                        "confidence": result["confidence"],
-                        "method": method,
-                        "reason": result["reason"],
-                        "overlap_count": overlap_count,
-                        "deterministic": False,
-                    })
-                    continue
-
-                if method in STRICT_OVERLAP_METHODS and overlap_count == 0:
-                    continue
-
-                if (
-                    method == "Fuzzy"
-                    and target_token_count > 1
-                    and overlap_count < 2
-                ):
-                    fallback_candidates.append({
-                        "target_field": target_field,
-                        "target_description": target_description,
-                        "confidence": result["confidence"],
-                        "method": method,
-                        "reason": result["reason"],
-                        "overlap_count": overlap_count,
-                        "deterministic": False,
-                    })
-                    continue
-
-                if method == "Abbreviation" and overlap_count == 0:
-                    continue
-
-            strict_candidates.append({
+            candidates.append({
                 "target_field": target_field,
                 "target_description": target_description,
-                "confidence": result["confidence"],
-                "method": method,
-                "reason": result["reason"],
-                "overlap_count": overlap_count,
-                "deterministic": method in DETERMINISTIC_METHODS,
+                "confidence": final_score,
+                "method": "D365 Concept Match",
+                "reason": reason,
             })
 
-        strict_candidates.sort(
-            key=lambda x: (
-                x["deterministic"],
-                x["confidence"],
-                x["overlap_count"],
-            ),
-            reverse=True,
-        )
+        # -------------------------------------------------------
+        # Step 3: Sort by confidence, take top N
+        # -------------------------------------------------------
+        candidates.sort(key=lambda x: x["confidence"], reverse=True)
 
-        fallback_candidates.sort(
-            key=lambda x: (
-                x["confidence"],
-                x["overlap_count"],
-            ),
-            reverse=True,
-        )
+        output = [c for c in candidates[:self.top_n]]
 
-        candidates = strict_candidates or fallback_candidates
-
-        output = []
-
-        for c in candidates[:self.top_n]:
-            output.append({
-                "target_field": c["target_field"],
-                "target_description": c["target_description"],
-                "confidence": c["confidence"],
-                "method": c["method"],
-                "reason": c["reason"],
-            })
-
+        # -------------------------------------------------------
+        # Step 4: LLM reranking (if configured)
+        # -------------------------------------------------------
         if llm_reranker and output:
             reranked = llm_reranker.rerank_targets(source, output)
             if reranked:
