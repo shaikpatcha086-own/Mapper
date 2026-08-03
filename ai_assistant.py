@@ -514,22 +514,30 @@ class NoMapAIAssistant:
 
         # -------------------------------------------------------
         # Step 1: Expand source to D365 business concepts
+        # Strip HEURISTIC_GATE_TOKENS so generic tokens like
+        # "number", "no", "state" don't drive false 100% matches
         # -------------------------------------------------------
-        source_concepts = set(get_concepts(source_field) or [])
+        _GATE = HEURISTIC_GATE_TOKENS | {
+            "no", "num", "nbr", "number", "id", "code", "key",
+            "province", "region", "state", "value", "data",
+            "record", "field", "type", "name", "group"
+        }
 
-        # Also include concepts from description if available
+        raw_source_concepts = set(get_concepts(source_field) or [])
         if source_description:
-            source_concepts.update(get_concepts(source_description) or [])
-
-        # D365 dictionary expansion
+            raw_source_concepts.update(get_concepts(source_description) or [])
         d365_concept = get_business_concept(source_field)
         if d365_concept:
-            source_concepts.update(tokenize(d365_concept))
+            raw_source_concepts.update(tokenize(d365_concept))
+
+        # Meaningful concepts = strip gate tokens
+        source_meaningful = raw_source_concepts - _GATE
 
         semantic = SemanticMatcher()
 
         # -------------------------------------------------------
-        # Step 2: Score all targets by concept overlap
+        # Step 2: Score all targets by MEANINGFUL concept overlap
+        # Require at least 1 non-generic concept to match
         # -------------------------------------------------------
         candidates = []
 
@@ -544,26 +552,33 @@ class NoMapAIAssistant:
             if violates_business_rule(source_field, target_field):
                 continue
 
-            # Semantic concept score
-            concept_score = semantic.similarity(source_field, target_field)
+            raw_target_concepts = set(get_concepts(target_field) or [])
+            target_meaningful = raw_target_concepts - _GATE
 
-            # Weighted semantic score (boosts meaningful overlap)
-            weighted_score = semantic.weighted_similarity(source_field, target_field)
-
-            # Description-enhanced score: if target description shares concepts
-            desc_bonus = 0
-            if target_description and source_concepts:
-                target_desc_concepts = set(get_concepts(target_description) or [])
-                overlap = source_concepts.intersection(target_desc_concepts)
-                if overlap:
-                    desc_bonus = min(len(overlap) * 5, 20)
-
-            final_score = min(100, max(concept_score, weighted_score) + desc_bonus)
-
-            if final_score < 20:
+            # Must share at least 1 meaningful concept — no gate-only matches
+            meaningful_overlap = source_meaningful.intersection(target_meaningful)
+            if not meaningful_overlap:
                 continue
 
-            matching = semantic.matching_concepts(source_field, target_field)
+            # Score only on meaningful concepts (avoids false 100%)
+            concept_score = round(
+                len(meaningful_overlap) / max(len(source_meaningful), len(target_meaningful), 1) * 100
+            )
+
+            if concept_score < 25:
+                continue
+
+            # Description bonus
+            desc_bonus = 0
+            if target_description and source_meaningful:
+                target_desc_concepts = set(get_concepts(target_description) or []) - _GATE
+                desc_overlap = source_meaningful.intersection(target_desc_concepts)
+                if desc_overlap:
+                    desc_bonus = min(len(desc_overlap) * 5, 20)
+
+            final_score = min(100, concept_score + desc_bonus)
+
+            matching = sorted(meaningful_overlap)
             reason = (
                 f"D365 concept match: {', '.join(matching)}"
                 if matching
