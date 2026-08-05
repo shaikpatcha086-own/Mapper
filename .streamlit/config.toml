@@ -3,3 +3,13 @@ headless = true
 enableCORS = true
 enableXsrfProtection = true
 maxUploadSize = 200
+folderWatchBlacklist = ["./logs", "./Inputs", "./Output", ".git"]
+
+[logger]
+level = "info"
+
+[client]
+showErrorDetails = true
+
+[browser]
+gatherUsageStats = false
