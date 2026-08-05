@@ -197,7 +197,14 @@ class LLMTargetReranker:
             with request.urlopen(req, timeout=20) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
                 return payload["choices"][0]["message"]["content"]
-        except error.URLError:
+        except error.HTTPError as e:
+            import sys
+            body = e.read().decode("utf-8", errors="replace")
+            print(f"[AZURE HTTP ERROR] {e.code} {e.reason}: {body[:300]}", file=sys.stderr)
+            return ""
+        except error.URLError as e:
+            import sys
+            print(f"[AZURE URL ERROR] {e.reason}", file=sys.stderr)
             return ""
 
     def _invoke_openai(self, prompt):
