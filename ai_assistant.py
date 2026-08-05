@@ -271,22 +271,19 @@ class LLMTargetReranker:
         target list and decides based on business context alone.
         Returns top suggestions with method = "LLM Suggestion".
         """
-        if not self.is_configured() or not source or not target_metadata:
-            return []
+        results = self.suggest_batch([source], target_metadata, exclude_targets=exclude_targets)
+        return results.get(source.get("field", ""), [])
+
+    def suggest_batch(self, sources, target_metadata, exclude_targets=None):
+        """
+        Send multiple source fields in ONE LLM call.
+        Returns dict: {source_field: [suggestions]}
+        """
+        if not self.is_configured() or not sources or not target_metadata:
+            return {}
 
         excluded = set(exclude_targets or [])
-        source_field = source.get("field", "")
-        source_description = source.get("description", "")
-        source_context = (
-            source.get("source_entity", "")
-            or source.get("source_sheet", "")
-            or source.get("source_file", "")
-        )
 
-        if not source_field:
-            return []
-
-        # Pass all target fields to LLM (up to 60 to stay within token limits)
         target_list = [
             {
                 "target_field": t.get("field", ""),
@@ -296,30 +293,47 @@ class LLMTargetReranker:
             if t.get("field", "") and t.get("field", "") not in excluded
         ][:60]
 
+        source_list = [
+            {
+                "field": s.get("field", ""),
+                "description": s.get("description", ""),
+                "context": (
+                    s.get("source_entity", "")
+                    or s.get("source_sheet", "")
+                    or s.get("source_file", "")
+                ),
+            }
+            for s in sources if s.get("field", "")
+        ]
+
+        if not source_list:
+            return {}
+
         payload = {
-            "source": {
-                "field": source_field,
-                "description": source_description,
-                "context": source_context,
-            },
+            "source_fields": source_list,
             "available_targets": target_list,
             "instructions": {
-                "goal": "Suggest the best D365 FO target field matches for this source field.",
+                "goal": "For each source field, suggest the best D365 FO target field matches.",
                 "constraints": [
-                    "Return max 3 recommendations.",
+                    "Return max 3 recommendations per source field.",
                     "Only use target fields from available_targets list.",
                     "Do not invent new target fields.",
                     "Base suggestions on D365 Finance & Operations business meaning.",
                     "Return confidence 0-100 and concise business reason.",
-                    "If no good match exists, return empty recommendations list.",
+                    "If no good match exists for a source, return empty recommendations list.",
                 ],
             },
             "output_schema": {
-                "recommendations": [
+                "results": [
                     {
-                        "target_field": "string",
-                        "confidence": 0,
-                        "reason": "string",
+                        "source_field": "string",
+                        "recommendations": [
+                            {
+                                "target_field": "string",
+                                "confidence": 0,
+                                "reason": "string",
+                            }
+                        ]
                     }
                 ]
             },
@@ -329,34 +343,40 @@ class LLMTargetReranker:
             raw = self._invoke_llm(json.dumps(payload, ensure_ascii=True))
             parsed = self._parse_json(raw)
             if not parsed:
-                return []
+                return {}
 
             target_index = {t["target_field"]: t for t in target_list}
-            results = []
+            batch_results = {}
 
-            for item in parsed.get("recommendations", [])[:self.top_n]:
-                target_field = str(item.get("target_field", "")).strip()
-                if not target_field or target_field not in target_index:
+            for entry in parsed.get("results", []):
+                source_field = str(entry.get("source_field", "")).strip()
+                if not source_field:
                     continue
 
-                confidence = item.get("confidence", 0)
-                try:
-                    confidence = int(confidence)
-                except Exception:
-                    confidence = 0
+                suggestions = []
+                for item in entry.get("recommendations", [])[:self.top_n]:
+                    target_field = str(item.get("target_field", "")).strip()
+                    if not target_field or target_field not in target_index:
+                        continue
+                    confidence = item.get("confidence", 0)
+                    try:
+                        confidence = int(confidence)
+                    except Exception:
+                        confidence = 0
+                    suggestions.append({
+                        "target_field": target_field,
+                        "target_description": target_index[target_field].get("target_description", ""),
+                        "confidence": max(0, min(100, confidence)),
+                        "method": "LLM Suggestion",
+                        "reason": str(item.get("reason", "")).strip() or "LLM independent suggestion",
+                    })
 
-                results.append({
-                    "target_field": target_field,
-                    "target_description": target_index[target_field].get("target_description", ""),
-                    "confidence": max(0, min(100, confidence)),
-                    "method": "LLM Suggestion",
-                    "reason": str(item.get("reason", "")).strip() or "LLM independent suggestion",
-                })
+                batch_results[source_field] = suggestions
 
-            return results
+            return batch_results
 
         except Exception:
-            return []
+            return {}
 
 
 class NoMapAIAssistant:

@@ -296,6 +296,37 @@ if source_files and target_file:
                         remaining_sources = remaining_sources[:AI_ASSISTANCE_MAX_SOURCES]
                         ai_truncated_by_source_limit = True
 
+                    # Pre-compute D365 suggestions for all sources
+                    d365_map = {}
+                    llm_needed = []
+                    for source in remaining_sources:
+                        d365_suggestions = nomap_ai.suggest_targets_for_unmapped_source(
+                            source, target_metadata,
+                            exclude_targets=mapped_targets_high_conf,
+                            llm_reranker=None
+                        )
+                        d365_map[source.get("field", "")] = d365_suggestions
+                        d365_best = d365_suggestions[0]["confidence"] if d365_suggestions else 0
+                        if llm_reranker and d365_best < 70:
+                            llm_needed.append(source)
+
+                    # Batch LLM calls (10 fields per call)
+                    LLM_BATCH_SIZE = 10
+                    llm_batch_results = {}
+                    if llm_reranker and llm_needed:
+                        llm_start = perf_counter()
+                        for i in range(0, len(llm_needed), LLM_BATCH_SIZE):
+                            if perf_counter() - ai_assistance_start >= AI_ASSISTANCE_TIME_BUDGET_SECONDS:
+                                ai_truncated_by_time_budget = True
+                                break
+                            batch = llm_needed[i:i + LLM_BATCH_SIZE]
+                            batch_out = llm_reranker.suggest_batch(
+                                batch, target_metadata,
+                                exclude_targets=mapped_targets_high_conf
+                            )
+                            llm_batch_results.update(batch_out)
+                        llm_rerank_seconds += (perf_counter() - llm_start)
+
                     for source in remaining_sources:
 
                         if (
@@ -307,16 +338,19 @@ if source_files and target_file:
 
                         ai_sources_processed += 1
 
-                        llm_start = perf_counter()
+                        field_key = source.get("field", "")
+                        d365_suggestions = d365_map.get(field_key, [])
+                        llm_suggestions = [
+                            s for s in llm_batch_results.get(field_key, [])
+                            if s.get("confidence", 0) >= 50
+                        ]
 
-                        suggestions = nomap_ai.suggest_targets_for_unmapped_source(
-                            source,
-                            target_metadata,
-                            exclude_targets=mapped_targets_high_conf,
-                            llm_reranker=llm_reranker
-                        )
-
-                        llm_rerank_seconds += (perf_counter() - llm_start)
+                        if d365_suggestions and llm_suggestions:
+                            suggestions = llm_suggestions if llm_suggestions[0]["confidence"] >= d365_suggestions[0]["confidence"] else d365_suggestions
+                        elif llm_suggestions:
+                            suggestions = llm_suggestions
+                        else:
+                            suggestions = d365_suggestions
 
                         top = suggestions[0] if suggestions else None
 
