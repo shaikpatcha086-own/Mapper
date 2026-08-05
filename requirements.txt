@@ -1,9 +1,9 @@
-fastapi>=0.100.0,<0.110.0
+fastapi==0.104.1
 openpyxl>=3.1.0
 pandas>=2.2.0
 python-dotenv>=1.0.0
 python-multipart>=0.0.9
 rapidfuzz>=3.9.0
-streamlit==1.32.0
-starlette==0.35.0
-uvicorn==0.27.0
+streamlit==1.28.1
+starlette==0.32.0
+uvicorn==0.24.0
