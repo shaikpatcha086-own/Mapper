@@ -700,19 +700,17 @@ class NoMapAIAssistant:
 
         # -------------------------------------------------------
         # Step 4: LLM independent suggestion (if configured)
-        # Run regardless of whether D365 found candidates
+        # Only call LLM if D365 found no strong match (< 70)
+        # to avoid unnecessary API calls and save time
         # -------------------------------------------------------
         llm_output = []
-        if llm_reranker:
+        d365_best = d365_output[0]["confidence"] if d365_output else 0
+        if llm_reranker and d365_best < 70:
             try:
                 llm_output = llm_reranker.suggest_independently(
                     source, target_metadata, exclude_targets=excluded
                 )
-                import sys
-                print(f"[LLM DEBUG] source={source.get('field','')} llm_raw={llm_output}", file=sys.stderr)
-            except Exception as llm_err:
-                import sys
-                print(f"[LLM ERROR] source={source.get('field','')} error={llm_err}", file=sys.stderr)
+            except Exception:
                 llm_output = []
             # Filter LLM results to >= 50 confidence
             llm_output = [c for c in llm_output if c.get("confidence", 0) >= 50]
