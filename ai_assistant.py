@@ -697,9 +697,16 @@ class NoMapAIAssistant:
         # -------------------------------------------------------
         llm_output = []
         if llm_reranker:
-            llm_output = llm_reranker.suggest_independently(
-                source, target_metadata, exclude_targets=excluded
-            )
+            try:
+                llm_output = llm_reranker.suggest_independently(
+                    source, target_metadata, exclude_targets=excluded
+                )
+                import sys
+                print(f"[LLM DEBUG] source={source.get('field','')} llm_raw={llm_output}", file=sys.stderr)
+            except Exception as llm_err:
+                import sys
+                print(f"[LLM ERROR] source={source.get('field','')} error={llm_err}", file=sys.stderr)
+                llm_output = []
             # Filter LLM results to >= 50 confidence
             llm_output = [c for c in llm_output if c.get("confidence", 0) >= 50]
 
