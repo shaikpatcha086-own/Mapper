@@ -307,29 +307,25 @@ if source_files and target_file:
                         )
                         d365_map[source.get("field", "")] = d365_suggestions
                         d365_best = d365_suggestions[0]["confidence"] if d365_suggestions else 0
-                        if llm_reranker and d365_best < 70:
+                        # Only call LLM when D365 has no match >= 50
+                        if llm_reranker and d365_best < 50:
                             llm_needed.append(source)
 
-                    # Batch LLM calls (10 fields per call)
-                    LLM_BATCH_SIZE = 10
+                    # Individual LLM calls only for fields D365 couldn't match
                     llm_batch_results = {}
                     if llm_reranker and llm_needed:
                         llm_start = perf_counter()
-                        for i in range(0, len(llm_needed), LLM_BATCH_SIZE):
+                        for source in llm_needed:
                             if perf_counter() - ai_assistance_start >= AI_ASSISTANCE_TIME_BUDGET_SECONDS:
                                 ai_truncated_by_time_budget = True
                                 break
-                            batch = llm_needed[i:i + LLM_BATCH_SIZE]
-                            batch_out = llm_reranker.suggest_batch(
-                                batch, target_metadata,
+                            field_key = source.get("field", "")
+                            llm_out = llm_reranker.suggest_independently(
+                                source, target_metadata,
                                 exclude_targets=mapped_targets_high_conf
                             )
-                            # Build normalized key lookup to handle bracket/case mismatches
-                            norm_map = {s.get("field", "").strip("[] ").lower(): s.get("field", "") for s in batch}
-                            for llm_key, llm_val in batch_out.items():
-                                normalized = llm_key.strip("[] ").lower()
-                                original_key = norm_map.get(normalized, llm_key)
-                                llm_batch_results[original_key] = llm_val
+                            if llm_out:
+                                llm_batch_results[field_key] = llm_out
                         llm_rerank_seconds += (perf_counter() - llm_start)
 
                     for source in remaining_sources:
