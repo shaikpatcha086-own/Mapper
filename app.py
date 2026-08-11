@@ -324,7 +324,12 @@ if source_files and target_file:
                                 batch, target_metadata,
                                 exclude_targets=mapped_targets_high_conf
                             )
-                            llm_batch_results.update(batch_out)
+                            # Build normalized key lookup to handle bracket/case mismatches
+                            norm_map = {s.get("field", "").strip("[] ").lower(): s.get("field", "") for s in batch}
+                            for llm_key, llm_val in batch_out.items():
+                                normalized = llm_key.strip("[] ").lower()
+                                original_key = norm_map.get(normalized, llm_key)
+                                llm_batch_results[original_key] = llm_val
                         llm_rerank_seconds += (perf_counter() - llm_start)
 
                     for source in remaining_sources:
