@@ -271,8 +271,89 @@ class LLMTargetReranker:
         target list and decides based on business context alone.
         Returns top suggestions with method = "LLM Suggestion".
         """
-        results = self.suggest_batch([source], target_metadata, exclude_targets=exclude_targets)
-        return results.get(source.get("field", ""), [])
+        if not self.is_configured() or not source or not target_metadata:
+            return []
+
+        excluded = set(exclude_targets or [])
+        source_field = source.get("field", "")
+        source_description = source.get("description", "")
+        source_context = (
+            source.get("source_entity", "")
+            or source.get("source_sheet", "")
+            or source.get("source_file", "")
+        )
+
+        if not source_field:
+            return []
+
+        target_list = [
+            {
+                "target_field": t.get("field", ""),
+                "target_description": t.get("description", ""),
+            }
+            for t in target_metadata
+            if t.get("field", "") and t.get("field", "") not in excluded
+        ][:60]
+
+        payload = {
+            "source": {
+                "field": source_field,
+                "description": source_description,
+                "context": source_context,
+            },
+            "available_targets": target_list,
+            "instructions": {
+                "goal": "Suggest the best D365 FO target field matches for this source field.",
+                "constraints": [
+                    "Return max 3 recommendations.",
+                    "Only use target fields from available_targets list.",
+                    "Do not invent new target fields.",
+                    "Base suggestions on D365 Finance & Operations business meaning.",
+                    "Return confidence 0-100 and concise business reason.",
+                    "If no good match exists, return empty recommendations list.",
+                ],
+            },
+            "output_schema": {
+                "recommendations": [
+                    {
+                        "target_field": "string",
+                        "confidence": 0,
+                        "reason": "string",
+                    }
+                ]
+            },
+        }
+
+        try:
+            raw = self._invoke_llm(json.dumps(payload, ensure_ascii=True))
+            parsed = self._parse_json(raw)
+            if not parsed:
+                return []
+
+            target_index = {t["target_field"]: t for t in target_list}
+            results = []
+
+            for item in parsed.get("recommendations", [])[:self.top_n]:
+                target_field = str(item.get("target_field", "")).strip()
+                if not target_field or target_field not in target_index:
+                    continue
+                confidence = item.get("confidence", 0)
+                try:
+                    confidence = int(confidence)
+                except Exception:
+                    confidence = 0
+                results.append({
+                    "target_field": target_field,
+                    "target_description": target_index[target_field].get("target_description", ""),
+                    "confidence": max(0, min(100, confidence)),
+                    "method": "LLM Suggestion",
+                    "reason": str(item.get("reason", "")).strip() or "LLM independent suggestion",
+                })
+
+            return results
+
+        except Exception:
+            return []
 
     def suggest_batch(self, sources, target_metadata, exclude_targets=None):
         """

@@ -538,7 +538,7 @@ if source_files and target_file:
                     pd.DataFrame([
                         {
                             "Metric": key,
-                            "Value": value,
+                            "Value": str(value),
                         }
                         for key, value in result.get("diagnostics", {}).items()
                     ]),
