@@ -725,7 +725,7 @@ class NoMapAIAssistant:
         # -------------------------------------------------------
         llm_output = []
         d365_best = d365_output[0]["confidence"] if d365_output else 0
-        if llm_reranker and d365_best < 70:
+        if llm_reranker and d365_best < 50:
             try:
                 llm_output = llm_reranker.suggest_independently(
                     source, target_metadata, exclude_targets=excluded
