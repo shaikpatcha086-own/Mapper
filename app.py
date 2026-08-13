@@ -296,6 +296,9 @@ if source_files and target_file:
                         remaining_sources = remaining_sources[:AI_ASSISTANCE_MAX_SOURCES]
                         ai_truncated_by_source_limit = True
 
+                    MAX_LLM_CALLS = 15
+                    llm_call_count = 0
+
                     for source in remaining_sources:
 
                         if (
@@ -309,12 +312,19 @@ if source_files and target_file:
 
                         llm_start = perf_counter()
 
+                        # Only pass llm_reranker if we haven't hit the call cap
+                        active_llm = llm_reranker if llm_call_count < MAX_LLM_CALLS else None
+
                         suggestions = nomap_ai.suggest_targets_for_unmapped_source(
                             source,
                             target_metadata,
                             exclude_targets=mapped_targets_high_conf,
-                            llm_reranker=llm_reranker
+                            llm_reranker=active_llm
                         )
+
+                        # Count if LLM was actually used (method = LLM Suggestion)
+                        if suggestions and suggestions[0].get("method") == "LLM Suggestion":
+                            llm_call_count += 1
 
                         llm_rerank_seconds += (perf_counter() - llm_start)
 

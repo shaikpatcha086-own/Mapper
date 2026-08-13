@@ -229,5 +229,5 @@ LOG_FOLDER = "logs"
 AI_ASSISTANCE_MAX_SOURCES = 500
 
 # Stop AI suggestion pass after this many seconds.
-# 300 seconds allows LLM calls for truly unmatched fields.
-AI_ASSISTANCE_TIME_BUDGET_SECONDS = 300.0
+# 120 seconds — LLM is capped at 15 calls so this is sufficient.
+AI_ASSISTANCE_TIME_BUDGET_SECONDS = 120.0
