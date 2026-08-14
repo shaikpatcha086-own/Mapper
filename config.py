@@ -225,9 +225,9 @@ LOG_FOLDER = "logs"
 # ---------------------------------------------------------
 
 # Limit how many leftover sources are evaluated for suggestions.
-# 50 works well with LLM-only approach (fast per-field calls).
-AI_ASSISTANCE_MAX_SOURCES = 50
+# 500 — process all NoMap fields with LLM.
+AI_ASSISTANCE_MAX_SOURCES = 500
 
 # Stop AI suggestion pass after this many seconds.
-# 90 seconds — covers 20 fields D365 + 15 LLM calls comfortably.
-AI_ASSISTANCE_TIME_BUDGET_SECONDS = 90.0
+# 180 seconds — allows LLM to process all NoMap fields.
+AI_ASSISTANCE_TIME_BUDGET_SECONDS = 180.0
