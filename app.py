@@ -296,25 +296,20 @@ if source_files and target_file:
                         remaining_sources = remaining_sources[:AI_ASSISTANCE_MAX_SOURCES]
                         ai_truncated_by_source_limit = True
 
-                    MAX_LLM_CALLS = 100  # No effective cap — process all NoMap fields
+                    MAX_LLM_CALLS = 25  # Cap LLM API calls for performance
                     llm_call_count = 0
 
                     for source in remaining_sources:
-
-                        if (
-                            perf_counter() - ai_assistance_start
-                            >= AI_ASSISTANCE_TIME_BUDGET_SECONDS
-                        ):
-                            ai_truncated_by_time_budget = True
-                            break
 
                         ai_sources_processed += 1
 
                         llm_start = perf_counter()
 
-                        # Call LLM for all leftover fields
+                        # Call LLM only within cap and time budget
                         suggestions = []
-                        if llm_reranker and llm_call_count < MAX_LLM_CALLS:
+                        if llm_reranker and llm_call_count < MAX_LLM_CALLS and (
+                            perf_counter() - ai_assistance_start < AI_ASSISTANCE_TIME_BUDGET_SECONDS
+                        ):
                             llm_results = llm_reranker.suggest_independently(
                                 source,
                                 target_metadata,
