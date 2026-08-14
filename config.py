@@ -225,8 +225,8 @@ LOG_FOLDER = "logs"
 # ---------------------------------------------------------
 
 # Limit how many leftover sources are evaluated for suggestions.
-# Keep low (20) to avoid slow concept matching for hundreds of fields.
-AI_ASSISTANCE_MAX_SOURCES = 20
+# 50 works well with LLM-only approach (fast per-field calls).
+AI_ASSISTANCE_MAX_SOURCES = 50
 
 # Stop AI suggestion pass after this many seconds.
 # 90 seconds — covers 20 fields D365 + 15 LLM calls comfortably.

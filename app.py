@@ -296,7 +296,7 @@ if source_files and target_file:
                         remaining_sources = remaining_sources[:AI_ASSISTANCE_MAX_SOURCES]
                         ai_truncated_by_source_limit = True
 
-                    MAX_LLM_CALLS = 15
+                    MAX_LLM_CALLS = 25
                     llm_call_count = 0
 
                     for source in remaining_sources:
@@ -312,19 +312,26 @@ if source_files and target_file:
 
                         llm_start = perf_counter()
 
-                        # Only pass llm_reranker if we haven't hit the call cap
-                        active_llm = llm_reranker if llm_call_count < MAX_LLM_CALLS else None
-
-                        suggestions = nomap_ai.suggest_targets_for_unmapped_source(
-                            source,
-                            target_metadata,
-                            exclude_targets=mapped_targets_high_conf,
-                            llm_reranker=active_llm
-                        )
-
-                        # Count if LLM was actually used (method = LLM Suggestion)
-                        if suggestions and suggestions[0].get("method") == "LLM Suggestion":
-                            llm_call_count += 1
+                        # Use LLM directly for all leftover fields (faster than D365 concept match)
+                        suggestions = []
+                        if llm_reranker and llm_call_count < MAX_LLM_CALLS:
+                            suggestions = llm_reranker.suggest_independently(
+                                source,
+                                target_metadata,
+                                exclude_targets=mapped_targets_high_conf
+                            )
+                            suggestions = [s for s in suggestions if s.get("confidence", 0) >= 50]
+                            if suggestions:
+                                llm_call_count += 1
+                        
+                        # Fallback to D365 concept match if LLM cap reached or LLM returned nothing
+                        if not suggestions:
+                            suggestions = nomap_ai.suggest_targets_for_unmapped_source(
+                                source,
+                                target_metadata,
+                                exclude_targets=mapped_targets_high_conf,
+                                llm_reranker=None
+                            )
 
                         llm_rerank_seconds += (perf_counter() - llm_start)
 
