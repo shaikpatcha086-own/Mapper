@@ -296,30 +296,38 @@ if source_files and target_file:
                         remaining_sources = remaining_sources[:AI_ASSISTANCE_MAX_SOURCES]
                         ai_truncated_by_source_limit = True
 
-                    MAX_LLM_CALLS = 15  # Cap LLM API calls for performance
-                    llm_call_count = 0
+                    MAX_LLM_CALLS = 15
+                    llm_sources = remaining_sources[:MAX_LLM_CALLS] if llm_reranker else []
+
+                    # Run LLM calls in parallel (5 threads) for speed
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    llm_results_map = {}
+
+                    def call_llm(src):
+                        results = llm_reranker.suggest_independently(
+                            src, target_metadata,
+                            exclude_targets=mapped_targets_high_conf
+                        )
+                        return src.get("field", ""), [r for r in results if r.get("confidence", 0) >= 50]
+
+                    llm_start = perf_counter()
+                    if llm_sources:
+                        with ThreadPoolExecutor(max_workers=5) as executor:
+                            futures = {executor.submit(call_llm, src): src for src in llm_sources}
+                            for future in as_completed(futures):
+                                try:
+                                    field_key, suggestions = future.result()
+                                    llm_results_map[field_key] = suggestions
+                                except Exception:
+                                    pass
+                    llm_rerank_seconds += (perf_counter() - llm_start)
+
+                    ai_sources_processed = len(remaining_sources)
 
                     for source in remaining_sources:
 
-                        ai_sources_processed += 1
-
-                        llm_start = perf_counter()
-
-                        # Call LLM only within cap and time budget
-                        suggestions = []
-                        if llm_reranker and llm_call_count < MAX_LLM_CALLS and (
-                            perf_counter() - ai_assistance_start < AI_ASSISTANCE_TIME_BUDGET_SECONDS
-                        ):
-                            llm_results = llm_reranker.suggest_independently(
-                                source,
-                                target_metadata,
-                                exclude_targets=mapped_targets_high_conf
-                            )
-                            # Only keep LLM results with confidence >= 50
-                            suggestions = [s for s in llm_results if s.get("confidence", 0) >= 50]
-                            llm_call_count += 1
-
-                        llm_rerank_seconds += (perf_counter() - llm_start)
+                        field_key = source.get("field", "")
+                        suggestions = llm_results_map.get(field_key, [])
 
                         top = suggestions[0] if suggestions else None
 
