@@ -299,7 +299,7 @@ if source_files and target_file:
                     MAX_LLM_CALLS = 15
                     llm_sources = remaining_sources[:MAX_LLM_CALLS] if llm_reranker else []
 
-                    # Run LLM calls in parallel (5 threads) for speed
+                    # Run LLM calls in parallel (3 threads) - avoids Azure rate limiting
                     from concurrent.futures import ThreadPoolExecutor, as_completed
                     llm_results_map = {}
 
@@ -312,7 +312,7 @@ if source_files and target_file:
 
                     llm_start = perf_counter()
                     if llm_sources:
-                        with ThreadPoolExecutor(max_workers=5) as executor:
+                        with ThreadPoolExecutor(max_workers=3) as executor:
                             futures = {executor.submit(call_llm, src): src for src in llm_sources}
                             for future in as_completed(futures):
                                 try:
