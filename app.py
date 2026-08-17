@@ -296,7 +296,7 @@ if source_files and target_file:
                         remaining_sources = remaining_sources[:AI_ASSISTANCE_MAX_SOURCES]
                         ai_truncated_by_source_limit = True
 
-                    MAX_LLM_CALLS = 25  # Cap LLM API calls for performance
+                    MAX_LLM_CALLS = 15  # Cap LLM API calls for performance
                     llm_call_count = 0
 
                     for source in remaining_sources:
@@ -315,8 +315,8 @@ if source_files and target_file:
                                 target_metadata,
                                 exclude_targets=mapped_targets_high_conf
                             )
-                            # Only keep LLM results with confidence > 75
-                            suggestions = [s for s in llm_results if s.get("confidence", 0) > 75]
+                            # Only keep LLM results with confidence >= 50
+                            suggestions = [s for s in llm_results if s.get("confidence", 0) >= 50]
                             llm_call_count += 1
 
                         llm_rerank_seconds += (perf_counter() - llm_start)
